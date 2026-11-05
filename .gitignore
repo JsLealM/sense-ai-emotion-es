@@ -1,0 +1,33 @@
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Model weights & Hugging Face / ModelScope cache
+checkpoints/
+models/
+.cache/
+*.pt
+*.bin
+*.pth
+*.onnx
+
+# Temporary audio files
+*.tmp
+*.temp
+/tmp/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS files
+.DS_Store
+Thumbs.db

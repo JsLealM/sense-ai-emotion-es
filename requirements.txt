@@ -1,0 +1,20 @@
+# PyTorch con aceleración CUDA 12.4
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch>=2.4.0
+torchaudio>=2.4.0
+
+# Hugging Face Transformers para W2V-BERT Emotion ES
+transformers>=4.40.0
+huggingface-hub>=0.23.0
+safetensors>=0.4.0
+
+# Procesamiento e inspección de audio
+soundfile>=0.12.1
+librosa>=0.10.0
+numpy<2.0.0
+
+# Interfaz gráfica interactiva y evaluación experimental
+streamlit>=1.35.0
+pandas>=2.0.0
+scikit-learn>=1.4.0
+matplotlib>=3.8.0

@@ -1,237 +1,198 @@
-# sense-ai-emotion-es
-## SENSE AI — Analizador Emocional de Voz en Español
-> **Prototipo Funcional de Reconocimiento de Emociones en el Habla (SER) con Aceleración NVIDIA CUDA**  
-> Proyecto Universitario: *Computación Paralela / Arquitecturas Paralelas* (7mo Semestre)  
-> **Nombre del Repositorio:** `sense-ai-emotion-es`
+# SENSE AI — Analizador Emocional de Voz en Español
+
+<div align="center">
+
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch 2.6](https://img.shields.io/badge/PyTorch-2.6.0%2Bcu124-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![NVIDIA CUDA 12.4](https://img.shields.io/badge/NVIDIA_CUDA-12.4-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![Hugging Face](https://img.shields.io/badge/Hugging_Face-UMUTeam-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/UMUTeam/w2v-bert-emotion-es)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.65-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+
+**Prototipo de Reconocimiento de Emociones en el Habla (SER) con Aceleración en Paralelo sobre Silicio NVIDIA CUDA**  
+*Asignatura: Computación Paralela y Distribuida — 7mo Semestre (2026)*
+
+</div>
 
 ---
 
-## Enlaces Oficiales del Modelo
-
-* **Hugging Face Model Hub:** [https://huggingface.co/UMUTeam/w2v-bert-emotion-es](https://huggingface.co/UMUTeam/w2v-bert-emotion-es)
-* **Entidad Desarrolladora:** [UMUTeam (Grupo de Lenguaje Natural, Universidad de Murcia)](https://huggingface.co/UMUTeam)
-* **Repositorio de Referencia (Toolkit):** [NLP-UMUTeam/umuteam-speech-emotion](https://github.com/NLP-UMUTeam/umuteam-speech-emotion)
-* **Licencia de los Pesos:** Apache 2.0 / Código MIT
-
----
-
-## 1. Descripción del Proyecto
-
-Este proyecto implementa y evalúa un prototipo funcional de **Reconocimiento de Emociones en el Habla (Speech Emotion Recognition - SER)** entrenado y ajustado específicamente para el **idioma español**. 
-
-A diferencia de modelos multilingües generalistas o centrados en transcripción (ASR) que carecen de soporte prosódico nativo para el español, este prototipo integra el modelo fundacional **W2V-BERT Emotion ES** (`UMUTeam/w2v-bert-emotion-es`) acelerado por hardware mediante **NVIDIA CUDA** para clasificar la acústica y entonación de la voz en seis estados emocionales fundamentales.
-
-### Categorías Emocionales Soportadas:
-El modelo infiere una distribución de probabilidad Softmax sobre las siguientes 6 clases:
-
-| ID | Etiqueta Original (Config) | Etiqueta en Español | Significado / Manifestación Acústica |
-| :---: | :---: | :---: | :--- |
-| `0` | `anger` | **Enojo / Molestia** | Elevada energía espectral, mayor intensidad sonora y pitch elevado. |
-| `1` | `disgust` | **Disgusto** | Inflexiones vocales de aversión o rechazo marcado. |
-| `2` | `fear` | **Miedo** | Modulación inestable, temblor tonal y energía contenida. |
-| `3` | `joy` | **Alegría** | Entonación melódica ascendente, ritmo ágil y energía positiva. |
-| `4` | `neutral` | **Neutral** | Entonación plana y uniforme, ritmo pausado y balance armónico. |
-| `5` | `sadness` | **Tristeza** | Pitch decaído, tempo lento y atenuación de formantes superiores. |
-
-> [!IMPORTANT]
-> **Descargo Ético Obligatorio**:  
-> El sistema clasifica patrones bioacústicos y prosódicos presentes en la señal sonora de la voz (frecuencia fundamental F0, energía, formantes). **Bajo ninguna circunstancia** debe interpretarse como un diagnóstico psicológico concluyente ni una evaluación psiquiátrica del estado mental interno de una persona.
+## 📌 Tabla de Contenidos
+1. [Modelo Usado de Hugging Face](#1-modelo-usado-de-hugging-face)
+2. [Descripción de la Aplicación y Problema que Resuelve](#2-descripción-de-la-aplicación)
+3. [Pruebas y Funcionamiento en Vivo](#3-pruebas-y-funcionamiento-en-vivo)
+4. [Aceleración y Funcionamiento de NVIDIA CUDA](#4-aceleración-y-funcionamiento-de-nvidia-cuda)
+5. [Arquitectura del Sistema](#5-arquitectura-del-sistema)
+6. [Instalación y Puesta en Marcha](#6-instalación-y-puesta-en-marcha)
+7. [Guía para el Video Explicativo y Sustentación](#7-guía-para-video-y-sustentación)
+8. [Contribuidores y Licencia](#8-contribuidores-y-licencia)
 
 ---
 
-## 2. Ficha Técnica y Arquitectura del Modelo
+## 1. Modelo Usado de Hugging Face
 
-* **Arquitectura:** `CustomAudioClassification` basada en **Wav2Vec2-BERT** (Conformer + Self-Attention de 24 capas).
-* **Parámetros Totales:** **~581.877.062 parámetros** (~582M params verificados físicamente en VRAM).
-* **Tamaño de los Pesos en Disco:** `model.safetensors` (~2.33 GB en precisión completa FP32).
-* **Preprocesamiento Acústico:** Extractor `SeamlessM4TFeatureExtractor` que calcula bancos de filtros Mel logarítmicos de **80 canales** muestreados a **16.000 Hz (16 kHz, canal mono)**.
-* **Cabezal de Clasificación (`ClassificationHead`):** Proyector lineal (1024 -> 768) + Capa Densa (768 -> 768) con activación Tanh + Proyección de salida (768 -> 6 clases).
+* **Identificador Oficial:** [`UMUTeam/w2v-bert-emotion-es`](https://huggingface.co/UMUTeam/w2v-bert-emotion-es)
+* **Organización Desarrolladora (*Issued By*):** **UMUTeam** (Grupo de Lenguaje Natural y Computación Afectiva, **Universidad de Murcia, España**).
+* **Parámetros Totales:** **~581.877.062 parámetros** (~582M verificados físicamente en VRAM).
+* **Licencia de los Pesos:** Apache 2.0.
 
----
+### ¿Por Qué se Eligió Este Modelo?
+1. **Acústico Puro (Cero Trampas Multimodales):** No depende de transcribir texto a palabras (ASR + LLM), sino que evalúa la **señal física y bioacústica de la voz** (frecuencia fundamental F0, entonación, formantes espectrales y dinámica temporal).
+2. **Entrenado Específicamente para el Idioma Español:** A diferencia de modelos globales anglosajones, está ajustado a la prosodia, fonética y cadencia del habla hispana.
+3. **Arquitectura Robusta:** Montado sobre Wav2Vec2-BERT con capas Conformer de atención multi-cabezal.
 
-## 3. Aceleración con NVIDIA CUDA en GPUs de 4 GB (RTX 3050 Laptop)
+### Restricciones Técnicas
+* **Formato de Entrada Obligatorio:** Audio mono a **16.000 Hz (16 kHz)** transformado a bancos de filtros Mel logarítmicos de **80 canales** (`SeamlessM4TFeatureExtractor`).
+* **Dilución en Audios Extensos:** Al procesar audios de más de 4 segundos en un único bloque monolítico, los picos emocionales breves se diluyen y el modelo tiende a predecir *Neutral*.
 
-Un modelo de 582M de parámetros en precisión completa (FP32) puede copar más de 3.5 GB al sumar los tensores de activaciones intermedias. Para garantizar una ejecución estable y veloz:
-
-1. **Inferencia en Media Precisión (`torch.float16`)**:
-   - Reduce la huella del modelo en VRAM a solo **~1.12 GB**.
-   - Deja más de **2.6 GB de VRAM libres** para cálculos tensoriales.
-2. **Sincronización de Streams (`torch.cuda.synchronize()`)**:
-   - Medición precisa de latencia en milisegundos evitando el sesgo de las llamadas asíncronas de la CPU.
-3. **Manejo Preventivo de Memoria**:
-   - Captura de excepciones `torch.cuda.OutOfMemoryError` con vaciado inmediato de fragmentación (`torch.cuda.empty_cache()`).
-4. **Modo Alternativo CPU**:
-   - Permite conmutar a CPU para verificar en vivo el factor de aceleración (*speedup*) frente a la GPU.
+### Ajustes Hechos en el Proyecto
+* **Inferencia en Media Precisión (`torch.float16`):** Reducción de la huella de memoria en VRAM de 2.33 GB a **~1.12 GB**, garantizando estabilidad en GPUs portátiles de 4 GB.
+* **Crono-Análisis en Lote (Parallel GPU Batching):** Segmentación en ventanas deslizantes (3.0s con paso de 2.0s) empacadas en tensores tridimensionales para evaluación masiva en un solo kernel de GPU.
+* **Agrupamiento Temporal de Logits (Temporal Average Pooling):** Promedio de los logits crudos de todas las ventanas temporales para audios largos antes de aplicar Softmax, capturando fielmente emociones transitorias.
 
 ---
 
-## 4. Instalación del Entorno Paso a Paso
+## 2. Descripción de la Aplicación
 
-El proyecto está diseñado para funcionar en **Linux nativo**, **WSL2 (Windows Subsystem for Linux)** y **Windows nativo**.
+### ¿Qué Problema Resuelve?
+La detección tradicional de estados de ánimo suele depender de APIs en la nube con alta latencia (> 1.5s), costos por llamada y riesgos de privacidad al transmitir grabaciones confidenciales a servidores externos.
+
+### ¿Qué Hace SENSE AI / AuraVoice?
+* **Ingesta Versátil:** Soporta carga de archivos (`.wav`, `.mp3`, `.ogg`, `.m4a`, `.flac`) y grabación de voz en vivo mediante micrófono con búfer persistente.
+* **Procesamiento de Señal en Tiempo Real:** Calcula nivel RMS en dB, pico máximo y descomposición espectral de 128 Mel-Bands.
+* **Modelo Circunflejo de Russell 2D:** Proyecta las 6 emociones discretas (Alegría, Tristeza, Enojo, Miedo, Disgusto, Neutral) en un vector continuo de **Valencia** (placer/displacer) y **Activación / Arousal** (calma/agitación).
+* **AuraTerminal Dual:** Consola con selector entre telemetría de silicio CUDA (VRAM, latencia, temperatura) y trazabilidad explicable (**XAI**) con cadena de decisión paso a paso.
 
 ---
 
-### Opción A: En Linux Nativo o WSL2 (Ubuntu / Debian / CachyOS / Arch)
+## 3. Pruebas y Funcionamiento en Vivo
 
-#### 1. Prerrequisitos de sistema (FFmpeg)
-- **Arch / CachyOS:** `sudo pacman -S ffmpeg`
-- **Ubuntu / Debian / WSL2:** `sudo apt update && sudo apt install -y ffmpeg`
+### Interfaz del Dashboard en Ejecución
+![Dashboard AuraVoice](assets/screenshots/dashboard_live.png)
 
-> **Nota para WSL2:** Si usas WSL2, asegúrate de tener instalado el controlador NVIDIA más reciente en Windows. Windows pasa automáticamente el soporte de CUDA a WSL2; **no instales drivers de GPU dentro de WSL2**.
+### Línea de Tiempo y Crono-Análisis en GPU (Batching Paralelo)
+![Línea de Tiempo Emocional](assets/screenshots/crono_timeline.png)
 
-#### 2. Clonar el repositorio
-```bash
-git clone https://github.com/TU_USUARIO/sense-ai-emotion-es.git
-cd sense-ai-emotion-es
+### Consola Dual AuraTerminal con Trazabilidad Explicable (XAI)
+![Consola XAI de Decisión](assets/screenshots/xai_reasoning_console.png)
+
+### Resumen de Pruebas con Audios Reales
+
+| Fichero de Prueba | Duración | Estado Predominante | Confianza | Valencia / Arousal | Diagnóstico Acústico |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Audio 1 (`WhatsApp Audio...`)** | 1.39 s | **Enojo** | **99.65%** | -0.70 / 0.91 | Tensión vocal aguda y energía RMS elevada. |
+| **Audio 2 (`WhatsApp Ptt 59s...`)** | 59.05 s | **Neutral / Técnico** | **91.88%** | +0.11 / 0.56 | Discurso continuo de trabajo con leves picos de fastidio. |
+| **Audio 3 (`WhatsApp Ptt 8.8s...`)** | 8.81 s | **Tristeza / Desilusión** | **99.48%** | -0.74 / 0.28 | Transición de euforia inicial ("me salió el cofre") a decepción final. |
+
+---
+
+## 4. Aceleración y Funcionamiento de NVIDIA CUDA
+
+En el contexto de **Computación Paralela**, el proyecto aprovecha la arquitectura Ampere de la GPU mediante las siguientes técnicas:
+
+```mermaid
+flowchart TD
+    AudioIn["Señal Acústica (16 kHz Mono)"] --> Slicing["Segmentación en Ventanas (3.0s, stride 2.0s)"]
+    Slicing --> BatchTensor["Empaquetamiento Batch Tensor [B, 80, T]"]
+    BatchTensor --> CUDAMemory["Transferencia HtoD a VRAM (torch.float16)"]
+    CUDAMemory --> KernelConv["Kernels Convolucionales 1D (Extracción de Features)"]
+    KernelConv --> KernelAttn["Tensor Cores: Multi-Head Attention Q·K^T / sqrt(d)"]
+    KernelAttn --> CUDASync["Sincronización de Streams (torch.cuda.synchronize)"]
+    CUDASync --> OutLogits["Logits en Paralelo [B, 6]"]
+    OutLogits --> SoftmaxPool["Temporal Average Pooling + Softmax"]
+    SoftmaxPool --> Dashboard["Renderizado UI + Telemetría AuraTerminal"]
 ```
 
-#### 3. Instalar `uv` y crear entorno Python 3.10
-```bash
-# Instalar uv en el espacio de usuario (sin requerir sudo)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Crear entorno con Python 3.10
-uv venv --python 3.10 .venv
-```
-
-#### 4. Activar el entorno virtual
-- **En Fish Shell (CachyOS por defecto):**
-  ```fish
-  source .venv/bin/activate.fish
-  ```
-- **En Bash o Zsh (Ubuntu / WSL2 por defecto):**
-  ```bash
-  source .venv/bin/activate
-  ```
-
-#### 5. Instalar dependencias con CUDA 12.4
-```bash
-uv pip install -r requirements.txt
-```
+1. **Paralelismo Masivo con Núcleos CUDA y Tensor Cores:** Las operaciones de convolución 1D y producto tensorial de auto-atención multi-cabezal se distribuyen entre los **2048 núcleos CUDA** y **64 Tensor Cores** de la GPU NVIDIA GeForce RTX 3050 Laptop.
+2. **Eficiencia en FP16 (Half Precision):** El modelo corre en `torch.float16`, duplicando el *throughput* aritmético y reduciendo la ocupación de VRAM de 2.33 GB a **1.12 GB**, evitando desbordamientos de memoria (*CUDA OOM*).
+3. **Procesamiento de Ventanas en Lote (Parallel GPU Batching):** En vez de evaluar $N$ ventanas en serie (lo que causaría $N$ transferencias lentas por el bus PCIe), todas las ventanas se evalúan en un único pase concurrente, logrando tiempos de ~20 ms por ventana.
+4. **Sincronización Científica de Streams:** Medición de latencia real con `torch.cuda.synchronize()` antes y después del bloque de ejecución, eliminando el sesgo asíncrono de la CPU.
 
 ---
 
-### Opción B: En Windows Nativo (PowerShell)
-
-#### 1. Prerrequisitos en Windows
-- **Instalar FFmpeg:** Abre PowerShell como Administrador y ejecuta:
-  ```powershell
-  winget install Gyan.FFmpeg
-  ```
-  *(O descarga el binario de ffmpeg.org y agrégalo al PATH del sistema).*
-
-#### 2. Instalar `uv` en Windows
-En PowerShell (terminal normal):
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-#### 3. Clonar y crear entorno virtual
-```powershell
-git clone https://github.com/TU_USUARIO/sense-ai-emotion-es.git
-cd sense-ai-emotion-es
-
-# Crear entorno aislado con Python 3.10
-uv venv --python 3.10 .venv
-```
-
-#### 4. Activar entorno en Windows
-- **En PowerShell:**
-  ```powershell
-  # Si PowerShell bloquea scripts, habilitar para la sesión actual:
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-
-  # Activar entorno:
-  .venv\Scripts\Activate.ps1
-  ```
-- **En Símbolo del Sistema (CMD):**
-  ```cmd
-  .venv\Scripts\activate.bat
-  ```
-
-#### 5. Instalar dependencias con CUDA
-```powershell
-uv pip install -r requirements.txt
-```
-
----
-
-## 5. Verificación Técnica en Terminal
-
-### A. Prueba de Estrés y Telemetría CUDA
-Comprueba que PyTorch detecta la GPU física y ejecuta operaciones tensoriales en VRAM:
-```bash
-python tests/test_cuda.py
-```
-*Salida esperada:* Detección de la RTX 3050 Laptop, multiplicación de matrices 4000x4000 en `cuda:0` en ~116 ms y reporte de VRAM.
-
-### B. Prueba de Inferencia Real sobre Audio en Español
-Ejecuta la clasificación emocional en terminal sobre una grabación de muestra:
-```bash
-python tests/test_inference.py samples/sample_es.wav
-```
-*Salida esperada:*
-- Verificación física de los **581.877.062 parámetros** en `cuda:0` en formato `float16`.
-- Predicción predominante (ej. Neutral: 99.94%).
-- Tabla de probabilidades de las 6 categorías.
-- Latencia en milisegundos (~497 ms), RTF (~0.20) y VRAM pico (~1122 MB).
-
----
-
-## 6. Ejecución de la Interfaz Web (Streamlit)
-
-Inicia la aplicación web interactiva:
-```bash
-streamlit run app.py
-```
-Se abrirá automáticamente en tu navegador en:  
-`http://localhost:8501`
-
-### Pestañas de la Aplicación AuraVoice:
-1. **Pestaña 1: Sesión en Vivo**: Dashboard principal AuraVoice con captura y streaming de audio, visualización de ondas espectrales (RMS/Pico dB), tarjeta de **Estado Emocional Latente** (modelo circunflejo Valence/Arousal, desglose de Softmax y métricas acústicas), **AuraTerminal** con telemetría de CPU y GPU en tiempo real, e **Historial de Diarización** (línea temporal de Alex y Dra. Silva).
-2. **Pestaña 2: Historial & Diarización**: Monitoreo de cuota de habla y simulador de turnos conversacionales dinámicos preparado para streaming multi-hablante.
-3. **Pestaña 3: Métricas de Inferencia**: Benchmark comparativo CUDA vs CPU y evaluación supervisada formal (Matriz de Confusión 6x6, Accuracy, Precision, Recall y F1-Score).
-4. **Pestaña 4: Configuración de Modelo**: Ficha técnica, ajuste de ventanas deslizantes, selector de hardware y optimización FP16.
-
----
-
-## 7. Estructura Modular del Proyecto
+## 5. Arquitectura del Sistema
 
 ```text
 sense-ai-emotion-es/
 │
-├── app.py                  # Interfaz web interactiva AuraVoice (Streamlit)
+├── app.py                  # Interfaz web AuraVoice (Streamlit 1.65)
 ├── requirements.txt        # Dependencias oficiales con índice CUDA 12.4
-├── README.md               # Documentación general y guía de instalación
-├── MODEL_CARD_NOTES.md     # Ficha técnica académica y funcionamiento de CUDA
-├── .gitignore              # Reglas de exclusión de caché, entorno y pesos
+├── README.md               # Documentación y ficha técnica del parcial
+├── LICENSE                 # Licencia de código abierto MIT
 │
-├── src/                    # Módulos modulares del sistema
-│   ├── cuda_monitor.py     # Telemetría de GPU, VRAM y verificación física de tensores
-│   ├── system_telemetry.py # Monitoreo de CPU, hilos y generador de logs AuraTerminal
-│   ├── audio_telemetry.py  # Extracción de ondas visuales, nivel RMS, pico dB y F0
-│   ├── diarization_engine.py# Seguimiento temporal multi-hablante (Alex y Dra. Silva)
-│   ├── audio_processor.py  # Conversión y metadatos de audio (16kHz mono)
-│   ├── model_loader.py     # Definición CustomAudioClassification y carga FP16 en VRAM
-│   ├── inference.py        # Orquestador con sincronización torch.cuda.synchronize()
-│   ├── result_parser.py    # Modelo circunflejo (Valence/Arousal) y métricas Softmax
-│   └── evaluator.py        # Matriz de confusión y métricas supervisadas (Scikit-Learn)
+├── src/                    # Módulos de lógica y computación paralela
+│   ├── cuda_monitor.py     # Telemetría de hardware GPU (nvidia-smi / VRAM)
+│   ├── system_telemetry.py # Monitoreo de CPU y generador de trazas XAI
+│   ├── audio_telemetry.py  # Extracción de nivel RMS, pico dB y Mel-Bands
+│   ├── audio_processor.py  # Conversión y normalización de audio a 16kHz
+│   ├── model_loader.py     # Carga de W2V-BERT FP16 y verificación de tensores
+│   ├── inference.py        # Crono-análisis en lote con sincronización CUDA
+│   ├── result_parser.py    # Modelo circunflejo de Russell 2D y Softmax
+│   └── evaluator.py        # Métricas supervisadas (Accuracy, F1, Matriz 6x6)
 │
-├── tests/                  # Pruebas automatizadas de terminal
-│   ├── test_cuda.py        # Verificación de hardware tensorial en CUDA
-│   └── test_inference.py   # Test de inferencia real de W2V-BERT en GPU
+├── tests/                  # Pruebas de terminal
+│   ├── test_cuda.py        # Test de estrés tensorial en CUDA
+│   └── test_inference.py   # Test de clasificación directa de W2V-BERT
 │
-├── samples/                # Audios de muestra en español
-│   ├── README.md           # Explicación del banco de pruebas
-│   └── sample_es.wav       # Audio en español de prueba ("República de Colombia")
+├── samples/                # Audios de prueba en español
+│   └── sample_es.wav       # Muestra acústica de referencia
 │
-└── assets/                 # Recursos multimedia y evidencias
-    └── screenshots/        # Capturas de pantalla para la sustentación
+└── assets/screenshots/     # Evidencias visuales para sustentación
+    ├── dashboard_live.png
+    ├── crono_timeline.png
+    └── xai_reasoning_console.png
 ```
 
 ---
 
-## Colaboradores y Licencia
-* **Proyecto Universitario:** Computación Paralela (2026).
-* **Código del Prototipo:** Licencia MIT.
-* **Modelo W2V-BERT Emotion ES:** Desarrollado por **UMUTeam** (Universidad de Murcia), Licencia Apache 2.0.
+## 6. Instalación y Puesta en Marcha
+
+### Prerrequisitos
+* Sistema Operativo: Linux (nativo), WSL2 o Windows 10/11.
+* GPU NVIDIA compatible con CUDA (arquitectura Turing, Ampere o superior).
+* Controladores NVIDIA actualizados (Driver 535+).
+* FFmpeg instalado en el sistema (`sudo apt install ffmpeg` o `winget install Gyan.FFmpeg`).
+
+### Paso a Paso con `uv`
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/TU_USUARIO/sense-ai-emotion-es.git
+cd sense-ai-emotion-es
+
+# 2. Crear entorno virtual con Python 3.10
+uv venv --python 3.10 .venv
+
+# 3. Activar el entorno
+source .venv/bin/activate       # Linux / WSL2 / macOS
+# .venv\Scripts\Activate.ps1    # Windows PowerShell
+
+# 4. Instalar dependencias con soporte CUDA 12.4
+uv pip install -r requirements.txt
+
+# 5. Ejecutar la aplicación web
+streamlit run app.py
+```
+
+La aplicación quedará disponible en `http://localhost:8501`.
+
+---
+
+## 7. Guía para Video y Sustentación
+
+Para la entrega del parcial, consulta el dossier completo en la documentación interna:
+* **Estructura del Video de 5 Minutos:** [Dossier Técnico](file:///home/jslealm/.gemini/antigravity-cli/brain/093632c5-ab75-44e1-9f03-ebc314a95190/guia_definitiva_parcial_aura_voice.md#4-video-explicativo-de-5-minutos-gui%C3%B3n-estructurado).
+* **Guión de Diapositivas para la Sustentación de 10 Minutos:** [Guión de Sustentación](file:///home/jslealm/.gemini/antigravity-cli/brain/093632c5-ab75-44e1-9f03-ebc314a95190/guia_definitiva_parcial_aura_voice.md#7-gui%C3%B3n-de-sustentaci%C3%B3n-de-10-minutos).
+* **Preguntas Frecuentes del Docente de Paralelas:** Respuestas formuladas para justificar el uso de CUDA, FP16 y batching paralelo.
+
+---
+
+## 8. Contribuidores y Licencia
+
+### Integrantes del Grupo de Trabajo
+* **Integrante 1:** Arquitectura de GPU, gestión de memoria VRAM y sincronización de streams.
+* **Integrante 2:** Preprocesamiento acústico, feature extraction y normalización 16kHz.
+* **Integrante 3:** Crono-análisis en lote, temporal pooling y modelo circunflejo de Russell.
+* **Integrante 4:** Interfaz visual reactiva, consola AuraTerminal y trazabilidad XAI.
+
+### Licencias
+* **Código Fuente del Prototipo:** [MIT License](LICENSE).
+* **Pesos del Modelo W2V-BERT Emotion ES:** Publicado por [UMUTeam](https://huggingface.co/UMUTeam) bajo licencia **Apache 2.0**.

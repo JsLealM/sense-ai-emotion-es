@@ -57,7 +57,20 @@ def get_cuda_status() -> Dict[str, Any]:
             "vram_allocated_mb": round(allocated_bytes / (1024 ** 2), 2),
             "vram_reserved_mb": round(reserved_bytes / (1024 ** 2), 2),
             "vram_free_mb": round(free_bytes / (1024 ** 2), 2),
+            "gpu_utilization_percent": 0.0,
+            "gpu_temperature_c": 0.0
         })
+
+        # Consulta en tiempo real a nivel de silicio mediante nvidia-smi
+        try:
+            import subprocess
+            cmd = ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits']
+            out_smi = subprocess.check_output(cmd, text=True, timeout=1.0).strip().split(',')
+            if len(out_smi) >= 2:
+                status["gpu_utilization_percent"] = float(out_smi[0].strip())
+                status["gpu_temperature_c"] = float(out_smi[1].strip())
+        except Exception:
+            pass
 
     return status
 

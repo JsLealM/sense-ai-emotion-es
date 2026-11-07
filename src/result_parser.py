@@ -9,22 +9,40 @@ from typing import Dict, Any, List, Tuple
 import torch
 
 EMOTION_TRANSLATION = {
+    # Clases canónicas UMUTeam (6 clases)
     "anger": "Enojo",
     "disgust": "Disgusto",
     "fear": "Miedo",
     "joy": "Alegría",
     "neutral": "Neutral",
     "sadness": "Tristeza",
+    # Clases emotion2vec+ (9 clases)
+    "angry": "Enojo",
+    "disgusted": "Disgusto",
+    "fearful": "Miedo",
+    "happy": "Alegría",
+    "other": "Otro",
+    "sad": "Tristeza",
+    "surprised": "Sorpresa",
+    "unknown": "Neutro / Desc.",
+    # Variantes en mayúsculas / español
+    "alegría": "Alegría",
+    "tristeza": "Tristeza",
+    "enojo": "Enojo",
+    "sorpresa": "Sorpresa",
 }
 
 # Paleta AuraVoice armonizada
 EMOTION_COLORS = {
-    "Alegría": "#EA580C",    # Naranja cálido / Terracota
-    "Tristeza": "#0D9488",   # Teal profundo / Calma
-    "Enojo": "#F43F5E",      # Carmesí
-    "Miedo": "#E11D48",      # Rosa oscuro
-    "Disgusto": "#D97706",   # Ámbar
-    "Neutral": "#574A43",    # Carbón espresso / Neutro cálido
+    "Alegría": "#EA580C",       # Naranja cálido / Terracota
+    "Tristeza": "#0D9488",      # Teal profundo / Calma
+    "Enojo": "#F43F5E",         # Carmesí
+    "Miedo": "#E11D48",         # Rosa oscuro
+    "Disgusto": "#D97706",      # Ámbar
+    "Neutral": "#574A43",       # Carbón espresso / Neutro cálido
+    "Sorpresa": "#8B5CF6",      # Púrpura eléctrico / Asombro
+    "Otro": "#64748B",          # Pizarra
+    "Neutro / Desc.": "#475569" # Gris azulado
 }
 
 # Coordenadas circunflejas canónicas de Russell (Valence: -1.0 a +1.0, Arousal: -1.0 a +1.0)
@@ -34,7 +52,10 @@ CIRCUMPLEX_COORDS = {
     "Tristeza": (-0.75, -0.45),
     "Enojo": (-0.70, 0.82),
     "Miedo": (-0.65, 0.70),
-    "Disgusto": (-0.60, 0.35)
+    "Disgusto": (-0.60, 0.35),
+    "Sorpresa": (0.65, 0.85),
+    "Otro": (0.00, 0.20),
+    "Neutro / Desc.": (0.00, 0.00)
 }
 
 ETHICAL_DISCLAIMER = (
@@ -63,7 +84,12 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
     arousal = round(max(0.05, (aro_sum + 1.0) / 2.0), 2)  # Escala 0.0 a 1.0
 
     # Determinar título latente compuesto y etiqueta semántica
-    if valence >= 0.3:
+    max_emo = max(scores.items(), key=lambda x: x[1])[0] if scores else "Neutral"
+    if max_emo == "Sorpresa":
+        title = "Sorpresa / Asombro Intenso"
+        tag = "● Asombrado"
+        tag_color = "#8B5CF6"
+    elif valence >= 0.3:
         if arousal >= 0.5:
             title = "Alegría / Entusiasmo"
             tag = "● Expresivo"
@@ -144,26 +170,30 @@ def parse_emotion_probabilities(
     # Calcular vector circunflejo Valence/Arousal
     circumplex = compute_circumplex_state(emotion_scores)
 
-    # Desglose de Top clases oficiales de W2V-BERT Emotion ES (UMUTeam)
+    # Desglose de clases dinámicas (6 clases UMUTeam o 9 clases emotion2vec)
     class_mapping = {
         "Alegría": "Alegría",
         "Neutral": "Neutral",
         "Tristeza": "Tristeza",
         "Enojo": "Enojo",
         "Miedo": "Miedo",
-        "Disgusto": "Disgusto"
+        "Disgusto": "Disgusto",
+        "Sorpresa": "Sorpresa",
+        "Otro": "Otro",
+        "Neutro / Desc.": "Neutro / Desc."
     }
 
     formatted_breakdown = []
-    palette_shades = ["#EA580C", "#F43F5E", "#E15A75", "#D97706", "#8F7D74", "#574A43"]
     for i, item in enumerate(detailed_list):
         formatted_name = class_mapping.get(item["categoria"], item["categoria"])
+        # Usar el color canónico de la categoría emocional
+        item_color = EMOTION_COLORS.get(item["categoria"], "#574A43")
         formatted_breakdown.append({
             "name": formatted_name,
             "raw_cat": item["categoria"],
             "percent": item["porcentaje"],
             "prob": item["probabilidad"],
-            "color": palette_shades[min(i, len(palette_shades)-1)]
+            "color": item_color
         })
 
     return {

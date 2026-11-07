@@ -69,7 +69,8 @@ def unload_emotion2vec_model():
 def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     """
     Carga el modelo emotion2vec/emotion2vec_plus_large usando FunASR.
-    Reutiliza la instancia en caché si ya está cargada en el dispositivo especificado.
+    Prioriza la copia local en disco (~/.cache/huggingface/hub/...) para ejecución
+    100% offline y libre de llamadas HTTP a servidores remotos.
     """
     cache_key = f"emotion2vec_plus_large_{device}"
     if cache_key in _E2V_CACHE:
@@ -80,9 +81,15 @@ def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     # Si se pide CUDA pero no está disponible, caer a CPU
     actual_device = device if ("cuda" in device and torch.cuda.is_available()) else "cpu"
 
+    # Verificar si el snapshot local ya existe en disco para carga 100% offline sin peticiones HTTP
+    local_snapshot = os.path.expanduser(
+        "~/.cache/huggingface/hub/models--emotion2vec--emotion2vec_plus_large/snapshots/6c303ba987b86b93193de93e34bb2b077a6bedc4"
+    )
+    model_source = local_snapshot if os.path.isdir(local_snapshot) else "emotion2vec/emotion2vec_plus_large"
+
     with silence_stdio():
         model = AutoModel(
-            model="emotion2vec/emotion2vec_plus_large",
+            model=model_source,
             hub="hf",
             device=actual_device,
             disable_update=True

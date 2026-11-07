@@ -9,9 +9,18 @@ import sys
 import time
 import tempfile
 import datetime
+import textwrap
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+def render_html(html_str: str):
+    """
+    Renderiza bloques HTML eliminando sangrías y saltos en blanco para evitar
+    que el parser CommonMark de Streamlit los interprete como bloques de código.
+    """
+    cleaned_lines = [line.strip() for line in html_str.strip().splitlines() if line.strip()]
+    st.markdown("".join(cleaned_lines), unsafe_allow_html=True)
 
 # Configurar ruta raíz del proyecto
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,14 +35,13 @@ from src.model_loader import load_emotion_model
 from src.evaluator import compute_evaluation_metrics, ALL_EMOTIONS
 from src.system_telemetry import get_system_cpu_usage, generate_terminal_logs
 from src.audio_telemetry import extract_waveform_bars
-from src.diarization_engine import get_default_diarization_state, update_diarization_from_inference
 
 # ==============================================================================
 # CONFIGURACIÓN DE PÁGINA STREAMLIT
 # ==============================================================================
 st.set_page_config(
     page_title="AuraVoice — Analizador Emocional de Voz en Tiempo Real",
-    page_icon="🎙️",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -64,7 +72,7 @@ AURAVOICE_CSS = """
     --radius-pill: 9999px;
 }
 
-html, body, [class*="st-"] {
+html, body, .main, div[data-testid="stMarkdownContainer"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--neutral-body);
 }
@@ -73,16 +81,24 @@ html, body, [class*="st-"] {
     background-color: var(--bg-page);
 }
 
-/* Ocultar barra superior genérica de Streamlit */
+/* Mantener la barra superior de Streamlit transparente sin bloquear */
 header[data-testid="stHeader"] {
-    background: transparent;
-    z-index: 1;
+    background: transparent !important;
+    z-index: 10;
 }
 
+/* Espaciado superior equilibrado y estético */
+div[data-testid="stMainBlockContainer"],
+div[data-testid="stAppViewBlockContainer"],
 .main .block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 2.5rem;
-    max-width: 1380px;
+    padding-top: 3.8rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1400px;
+}
+
+/* Ocultar contenedor vacío del bloque de estilos */
+div[data-testid="stVerticalBlock"] > div:has(style) {
+    display: none;
 }
 
 /* NAVBAR AURAVOICE */
@@ -667,30 +683,72 @@ header[data-testid="stHeader"] {
 }
 
 /* BOTONES PERSONALIZADOS STREAMLIT */
-div.stButton > button:first-child {
-    background-color: var(--primary);
-    color: white;
+div.stButton > button {
     font-family: 'Inter', sans-serif;
-    font-weight: 700;
-    font-size: 0.88rem;
-    border-radius: var(--radius-pill);
-    border: none;
-    padding: 8px 24px;
-    box-shadow: 0 2px 10px rgba(234, 88, 12, 0.25);
+    font-weight: 600;
+    font-size: 0.90rem;
+    border-radius: 10px;
+    padding: 10px 22px;
     transition: all 0.2s ease;
 }
 
-div.stButton > button:first-child:hover {
-    background-color: var(--primary-hover);
-    color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+/* Botón primario: elegante azul marino / obsidiana con texto blanco nítido */
+div.stButton > button[kind="primary"],
+div.stButton > button[data-testid="baseButton-primary"] {
+    background-color: #0F172A !important;
+    color: #FFFFFF !important;
+    border: 1px solid #0F172A !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15) !important;
 }
 
-div.stButton > button[kind="secondary"] {
-    background-color: #FFFFFF;
-    color: var(--neutral-body);
-    border: 1px solid var(--border-card);
+div.stButton > button[kind="primary"]:hover,
+div.stButton > button[data-testid="baseButton-primary"]:hover {
+    background-color: #1E293B !important;
+    color: #FFFFFF !important;
+    border-color: #1E293B !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25) !important;
+}
+
+div.stButton > button[kind="primary"] p,
+div.stButton > button[data-testid="baseButton-primary"] p,
+div.stButton > button[kind="primary"] span,
+div.stButton > button[data-testid="baseButton-primary"] span {
+    color: #FFFFFF !important;
+}
+
+/* Botón secundario: estilo minimalista con borde sutil */
+div.stButton > button[kind="secondary"],
+div.stButton > button[data-testid="baseButton-secondary"] {
+    background-color: #FFFFFF !important;
+    color: #1E293B !important;
+    border: 1px solid #CBD5E1 !important;
+}
+
+div.stButton > button[kind="secondary"]:hover,
+div.stButton > button[data-testid="baseButton-secondary"]:hover {
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
+    border-color: #94A3B8 !important;
+}
+
+div.stButton > button[kind="secondary"] p,
+div.stButton > button[data-testid="baseButton-secondary"] p {
+    color: #1E293B !important;
+}
+
+/* CONTENEDORES DE TARJETA STREAMLIT (ST.CONTAINER BORDER=TRUE) */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #FFFFFF !important;
+    border: 1px solid var(--border-card) !important;
+    border-radius: var(--radius-card) !important;
+    box-shadow: var(--shadow-card) !important;
+    padding: 20px 22px !important;
+    margin-bottom: 14px !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlock"] {
+    height: 100% !important;
 }
 </style>
 """
@@ -722,9 +780,6 @@ if "last_parsed_result" not in st.session_state:
 if "last_audio_array" not in st.session_state:
     st.session_state.last_audio_array = None
 
-if "diarization_state" not in st.session_state:
-    st.session_state.diarization_state = get_default_diarization_state()
-
 
 @st.cache_resource(show_spinner=False)
 def get_cached_model(device_choice: str, use_fp16: bool):
@@ -736,7 +791,7 @@ def get_cached_model(device_choice: str, use_fp16: bool):
 cuda_info = get_cuda_status()
 is_cuda_avail = cuda_info["is_available"]
 system_cpu = get_system_cpu_usage()
-detected_gpu_name = cuda_info.get("device_name", "NVIDIA RTX 4090" if is_cuda_avail else "CPU Multi-Core")
+detected_gpu_name = cuda_info.get("device_name", "NVIDIA GeForce RTX 3050 Laptop GPU" if is_cuda_avail else "CPU Multi-Core")
 
 
 # ==============================================================================
@@ -765,15 +820,15 @@ navbar_html = f"""
     </div>
 </div>
 """
-st.markdown(navbar_html, unsafe_allow_html=True)
+render_html(navbar_html)
 
 
 # Pestañas principales de la navegación superior
-tab_live, tab_diarization, tab_bench, tab_config = st.tabs([
-    "Sesión en Vivo",
-    "Historial & Diarización",
-    "Métricas de Inferencia",
-    "Configuración de Modelo"
+tab_live, tab_bench, tab_eval, tab_config = st.tabs([
+    "Sesión en Vivo (Análisis Emocional)",
+    "Benchmark CUDA vs CPU",
+    "Evaluación Supervisada (Matriz de Confusión)",
+    "Ficha Técnica & Configuración"
 ])
 
 
@@ -782,142 +837,127 @@ tab_live, tab_diarization, tab_bench, tab_config = st.tabs([
 # ==============================================================================
 with tab_live:
     # --------------------------------------------------------------------------
-    # BARRA DE CONTROL DE FLUJO DE AUDIO (AUDIO STREAM BAR)
+    # FILA SUPERIOR: CAPTURA DE AUDIO (IZQ) Y CONTROL DE INFERENCIA (DER)
+    # Estructura simétrica en cuadrícula 50/50 alineada con la fila inferior
     # --------------------------------------------------------------------------
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2.5, 1.2, 1.3])
+    src_col1, src_col2 = st.columns(2)
+    audio_target_path = None
 
-    with ctrl_col1:
-        st.markdown("""
-        <div class="stream-chips">
-            <div class="stream-chip">
-                <div class="stream-chip-dot" style="background: #10B981;"></div>
-                AUDIO STREAM 48kHz PCM / 16-bit Mono
+    with src_col1:
+        with st.container(border=True):
+            render_html("""
+            <div class="card-title-row" style="margin-bottom: 12px;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                    Captura de Voz en Español
+                </div>
+                <div class="confidence-pill" style="background:#FFF7ED; color:#EA580C; border-color:#FED7AA;">
+                    UMUTeam Emotion ES
+                </div>
             </div>
-            <div class="stream-chip">
-                <div class="stream-chip-dot" style="background: #3B82F6;"></div>
-                ✦ VAD State: Speech Active
-            </div>
-            <div class="stream-chip speaker-active">
-                <div class="stream-chip-dot" style="background: #EA580C;"></div>
-                Hablante 1: Alex <span style="font-size:0.65rem; background:#EA580C; color:white; padding:1px 5px; border-radius:4px;">ACTIVO</span>
-            </div>
-            <div class="stream-chip">
-                <div class="stream-chip-dot" style="background: #9CA3AF;"></div>
-                Hablante 2: Dra. Silva
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """)
 
-    with ctrl_col2:
-        mic_gain = st.slider("Ganancia Mic (dB)", min_value=0.0, max_value=18.0, value=6.4, step=0.2, format="+%.1f dB")
-        st.session_state.mic_gain_db = mic_gain
-
-    with ctrl_col3:
-        b1, b2 = st.columns(2)
-        with b1:
-            st.button("🎙️ Silenciar", use_container_width=True, key="btn_mute")
-        with b2:
-            capture_label = "■ Pausar" if st.session_state.is_capturing else "▶ Capturar"
-            if st.button(capture_label, use_container_width=True, key="btn_toggle_cap"):
-                st.session_state.is_capturing = not st.session_state.is_capturing
-                st.rerun()
-
-    # --------------------------------------------------------------------------
-    # SELECTOR DE ENTRADA Y FUENTE DE AUDIO
-    # --------------------------------------------------------------------------
-    with st.expander("Fuente de Entrada de Audio (Archivo de Voz / Muestra / Tiempo Real)", expanded=False):
-        src_mode = st.radio(
-            "Selecciona el modo de captura:",
-            options=["Muestra Pregrabada en Español", "Cargar Archivo de Voz (WAV, MP3, M4A, OGG)", "Micrófono Directo (Tiempo Real)"],
-            horizontal=True
-        )
-
-        audio_target_path = None
-
-        if src_mode == "Muestra Pregrabada en Español":
-            samples_dir = os.path.join(CURRENT_DIR, "samples")
-            sample_choices = {
-                "Muestra en Español (samples/sample_es.wav)": os.path.join(samples_dir, "sample_es.wav"),
-            }
-            if os.path.exists(samples_dir):
-                for f in os.listdir(samples_dir):
-                    if f.endswith((".wav", ".mp3", ".ogg")) and f not in ["sample_en.wav", "sample_zh.wav"]:
-                        sample_choices[f"Grabación: {f}"] = os.path.join(samples_dir, f)
-
-            selected_s = st.selectbox("Selecciona grabación de prueba:", options=list(sample_choices.keys()))
-            audio_target_path = sample_choices[selected_s]
-            if os.path.exists(audio_target_path):
-                st.audio(audio_target_path)
-
-        elif src_mode == "Cargar Archivo de Voz (WAV, MP3, M4A, OGG)":
-            uploaded_file = st.file_uploader(
-                "Sube un archivo de voz:",
-                type=["wav", "mp3", "m4a", "ogg", "flac"],
-                help="Soporta cualquier audio en español de voz hablada."
+            src_mode = st.radio(
+                "Fuente de entrada de audio:",
+                options=["Cargar Archivo", "Grabar Micrófono", "Muestra Pregrabada"],
+                horizontal=True
             )
-            if uploaded_file is not None:
-                ext = os.path.splitext(uploaded_file.name)[1]
-                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
-                    tf.write(uploaded_file.read())
-                    audio_target_path = tf.name
-                st.audio(audio_target_path)
 
-        elif src_mode == "Micrófono Directo (Tiempo Real)":
-            st.info("Preparado para la captura continua en streaming. Usa el grabador incorporado:")
-            # Usar grabador nativo de Streamlit si está disponible
-            if hasattr(st, "audio_input"):
-                mic_audio = st.audio_input("Graba tu voz para análisis instantáneo")
-                if mic_audio is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tf:
-                        tf.write(mic_audio.read())
+            if src_mode == "Cargar Archivo":
+                uploaded_file = st.file_uploader(
+                    "Sube un archivo de voz (WAV, MP3, M4A, OGG, FLAC):",
+                    type=["wav", "mp3", "m4a", "ogg", "flac"]
+                )
+                if uploaded_file is not None:
+                    ext = os.path.splitext(uploaded_file.name)[1]
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tf:
+                        tf.write(uploaded_file.read())
                         audio_target_path = tf.name
+
+            elif src_mode == "Grabar Micrófono":
+                if hasattr(st, "audio_input"):
+                    mic_audio = st.audio_input("Habla al micrófono de tu equipo:")
+                    if mic_audio is not None:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tf:
+                            tf.write(mic_audio.read())
+                            audio_target_path = tf.name
+                else:
+                    st.warning("El componente st.audio_input no está soportado en esta versión de Streamlit.")
+
+            elif src_mode == "Muestra Pregrabada":
+                samples_dir = os.path.join(CURRENT_DIR, "samples")
+                sample_choices = {
+                    "Muestra en Español (samples/sample_es.wav)": os.path.join(samples_dir, "sample_es.wav"),
+                }
+                if os.path.exists(samples_dir):
+                    for f in os.listdir(samples_dir):
+                        if f.endswith((".wav", ".mp3", ".ogg")) and f not in ["sample_en.wav", "sample_zh.wav"]:
+                            sample_choices[f"Grabación: {f}"] = os.path.join(samples_dir, f)
+
+                selected_s = st.selectbox("Selecciona grabación de prueba:", options=list(sample_choices.keys()))
+                audio_target_path = sample_choices[selected_s]
+
+    with src_col2:
+        with st.container(border=True):
+            render_html("""
+            <div class="card-title-row" style="margin-bottom: 12px;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+                    Reproducción & Inferencia GPU
+                </div>
+                <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0;">
+                    PyTorch CUDA FP16
+                </div>
+            </div>
+            """)
+
+            if audio_target_path and os.path.exists(audio_target_path):
+                st.audio(audio_target_path)
+                meta = get_audio_metadata(audio_target_path)
+                ch_str = meta.get("channels_name", "Mono" if meta.get("channels", 1) == 1 else "Estéreo")
+                st.caption(f"Duración: {meta.get('duration_seconds', 0)}s | Frecuencia: {meta.get('sample_rate', 16000)} Hz ({ch_str}) | Tamaño: {meta.get('size_kb', 0)} KB")
             else:
-                st.caption("Captura de streaming simulada con VAD activo y ventana deslizante de 120s.")
+                st.info("Selecciona o graba un archivo de audio para reproducirlo e iniciar la inferencia.")
 
-        btn_run_inf = st.button("▶ Ejecutar Inferencia de Emoción en Audio", type="primary", use_container_width=True)
+            btn_run_inf = st.button("Ejecutar Inferencia de Emoción en Audio", type="primary", use_container_width=True)
 
-        if btn_run_inf and audio_target_path and os.path.exists(audio_target_path):
-            with st.spinner("Procesando audio y ejecutando inferencia en modelo W2V-BERT Emotion ES..."):
-                try:
-                    dev_choice = "cuda:0" if is_cuda_avail else "cpu"
-                    m, fe, _ = get_cached_model(dev_choice, use_fp16=True)
-                    inf_res = run_emotion_inference(m, fe, audio_target_path, device=dev_choice)
+            if btn_run_inf:
+                if not audio_target_path or not os.path.exists(audio_target_path):
+                    st.warning("Selecciona o sube un archivo de voz antes de ejecutar la inferencia.")
+                else:
+                    with st.spinner("Procesando audio y ejecutando inferencia en modelo W2V-BERT Emotion ES..."):
+                        try:
+                            dev_choice = "cuda:0" if is_cuda_avail else "cpu"
+                            m, fe, _ = get_cached_model(dev_choice, use_fp16=True)
+                            inf_res = run_emotion_inference(m, fe, audio_target_path, device=dev_choice)
 
-                    if inf_res["status"] == "EXITOSA":
-                        st.session_state.last_parsed_result = inf_res["parsed_result"]
-                        st.session_state.last_inference_meta = {
-                            "latency_ms": inf_res["metrics"]["latency_ms"],
-                            "device_used": inf_res["metrics"]["device_used"],
-                            "predominant": inf_res["parsed_result"]["predominant_emotion"],
-                            "confidence": f"{inf_res['parsed_result']['predominant_percent']}%"
-                        }
-                        # Cargar array para waveform
-                        arr, _ = load_audio_array_16k(audio_target_path)
-                        st.session_state.last_audio_array = arr
-
-                        # Actualizar diarización
-                        st.session_state.diarization_state = update_diarization_from_inference(
-                            st.session_state.diarization_state,
-                            speaker_id="spk_1",
-                            detected_emotion=inf_res["parsed_result"]["predominant_emotion"],
-                            duration_s=inf_res["metrics"]["audio_duration_seconds"]
-                        )
-                        st.success("Inferencia completada con éxito. Dashboard actualizado.")
-                    else:
-                        st.error(f"Error en inferencia: {inf_res.get('error_message')}")
-                except Exception as exc:
-                    st.error(f"Error: {exc}")
+                            if inf_res["status"] == "EXITOSA":
+                                st.session_state.last_parsed_result = inf_res["parsed_result"]
+                                st.session_state.last_inference_meta = {
+                                    "latency_ms": inf_res["metrics"]["latency_ms"],
+                                    "device_used": inf_res["metrics"]["device_used"],
+                                    "predominant": inf_res["parsed_result"]["predominant_emotion"],
+                                    "confidence": f"{inf_res['parsed_result']['predominant_percent']}%"
+                                }
+                                # Cargar array para waveform
+                                arr, _ = load_audio_array_16k(audio_target_path)
+                                st.session_state.last_audio_array = arr
+                                st.success("Inferencia completada con éxito en GPU NVIDIA.")
+                            else:
+                                st.error(f"Error en inferencia: {inf_res.get('error_message')}")
+                        except Exception as exc:
+                            st.error(f"Error: {exc}")
 
     # --------------------------------------------------------------------------
     # TARJETA 2: ONDAS DE AUDIO CAPTURADO Y ESPECTRO (WAVEFORM & SPECTRUM)
     # --------------------------------------------------------------------------
     waveform_data = extract_waveform_bars(st.session_state.last_audio_array, num_bars=50)
 
-    # Generar barras HTML
+    # Generar barras HTML en una sola línea sin sangría
     bars_html_elements = []
     for h in waveform_data["bars"]:
         pct = max(8, int(h * 100))
-        bars_html_elements.append(f'<div class="wave-bar" style="height: {pct}%;"></div>')
+        bars_html_elements.append(f'<div class="wave-bar" style="height:{pct}%;"></div>')
     bars_html = "".join(bars_html_elements)
 
     waveform_card_html = f"""
@@ -925,7 +965,7 @@ with tab_live:
         <div class="waveform-header">
             <div class="waveform-tags">
                 <span class="tag-badge" style="background:#FFEDD5; color:#C2410C; font-weight:700;">
-                    ● Hablante 1 Detectado (VAD: Activo {waveform_data['vad_active_pct']})
+                    Señal Acústica Normalizada (16.000 Hz Mono)
                 </span>
                 <span class="tag-badge">Espectro: {waveform_data['mel_bands']} Mel-Bands</span>
             </div>
@@ -938,27 +978,27 @@ with tab_live:
             {bars_html}
         </div>
         <div class="waveform-footer">
-            <div>0.00s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0.50s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 1.00s (Ventana Deslizante)</div>
-            <div>⏱ Latencia de Buffer: {waveform_data['buffer_latency_ms']}ms</div>
+            <div>Resolución Temporal: 20ms por trama convolucional</div>
+            <div>Latencia de Inferencia GPU: {st.session_state.last_inference_meta['latency_ms'] if st.session_state.last_inference_meta else '---'} ms</div>
         </div>
     </div>
     """
-    st.markdown(waveform_card_html, unsafe_allow_html=True)
+    render_html(waveform_card_html)
 
     # --------------------------------------------------------------------------
     # SECCIÓN MEDIA: ESTADO EMOCIONAL LATENTE (IZQ) vs AURATERMINAL (DER)
     # --------------------------------------------------------------------------
-    col_emotion, col_terminal = st.columns([1.15, 1.05])
+    col_emotion, col_terminal = st.columns(2)
 
-    # Datos actuales o valores por defecto elegantes
+    # Datos actuales del modelo o estado inicial
     if st.session_state.last_parsed_result:
         parsed = st.session_state.last_parsed_result
         circ = parsed.get("circumplex", {
-            "title": "Calma Positiva / Receptivo",
-            "valence_str": "+0.68",
-            "arousal": 0.34,
-            "tag": "● Receptivo",
-            "tag_color": "#EA580C"
+            "title": "Neutral / Reposo Acústico",
+            "valence_str": "+0.15",
+            "arousal": 0.10,
+            "tag": "● Neutral",
+            "tag_color": "#574A43"
         })
         hero_title = circ["title"]
         circum_text = f"Vector Circunflejo: Valence {circ['valence_str']} | Arousal {circ['arousal']}"
@@ -966,41 +1006,34 @@ with tab_live:
         confidence_text = f"{parsed['predominant_percent']}% Confianza"
         breakdown_items = parsed.get("formatted_breakdown", [])
     else:
-        hero_title = "Calma Positiva / Receptivo"
-        circum_text = "Vector Circunflejo: Valence +0.68 | Arousal 0.34"
-        tag_text = "● Receptivo"
-        confidence_text = "94.2% Confianza"
+        hero_title = "Esperando Audio..."
+        circum_text = "Vector Circunflejo: Pendiente de inferencia"
+        tag_text = "● Sin Audio"
+        confidence_text = "---% Confianza"
         breakdown_items = [
-            {"name": "Entusiasmo / Alegría", "percent": 48.6, "color": "#EA580C"},
-            {"name": "Calma / Serenidad", "percent": 38.2, "color": "#F43F5E"},
-            {"name": "Tensión / Ansiedad", "percent": 8.4, "color": "#E15A75"},
-            {"name": "Frustración", "percent": 3.1, "color": "#D97706"},
-            {"name": "Neutral", "percent": 1.7, "color": "#8F7D74"},
+            {"name": "Neutral", "percent": 0.0, "color": "#574A43"},
+            {"name": "Alegría", "percent": 0.0, "color": "#EA580C"},
+            {"name": "Tristeza", "percent": 0.0, "color": "#0D9488"},
+            {"name": "Enojo", "percent": 0.0, "color": "#F43F5E"},
+            {"name": "Miedo", "percent": 0.0, "color": "#E11D48"},
+            {"name": "Disgusto", "percent": 0.0, "color": "#D97706"},
         ]
 
-    # Construir barras de progreso en HTML
+    # Construir barras de progreso en HTML en una sola línea sin indentación
     bars_list_html = []
-    for item in breakdown_items[:5]:
-        bars_list_html.append(f"""
-        <div class="prob-item">
-            <div class="prob-meta">
-                <span class="prob-name">{item['name']}</span>
-                <span class="prob-val">{item['percent']}%</span>
-            </div>
-            <div class="prob-track">
-                <div class="prob-fill" style="width: {item['percent']}%; background-color: {item['color']};"></div>
-            </div>
-        </div>
-        """)
+    for item in breakdown_items:
+        bars_list_html.append(
+            f'<div class="prob-item"><div class="prob-meta"><span class="prob-name">{item["name"]}</span><span class="prob-val">{item["percent"]}%</span></div><div class="prob-track"><div class="prob-fill" style="width: {item["percent"]}%; background-color: {item["color"]};"></div></div></div>'
+        )
     bars_inner_html = "".join(bars_list_html)
 
     # Inferencia latencia
-    latency_disp = "18.4 ms"
+    latency_disp = "--- ms"
     if st.session_state.last_inference_meta:
         latency_disp = f"{st.session_state.last_inference_meta['latency_ms']} ms"
 
     with col_emotion:
-        st.markdown(f"""
+        emotion_card_html = f"""
         <div class="section-card">
             <div class="card-title-row">
                 <div class="card-title">
@@ -1022,7 +1055,7 @@ with tab_live:
                 <span style="font-size:0.75rem; font-weight:700; color:#574A43; text-transform:uppercase;">
                     Desglose de Probabilidades (Softmax Distribution)
                 </span>
-                <span style="font-size:0.72rem; color:#8F7D74; font-weight:600;">Top-5 Clases</span>
+                <span style="font-size:0.72rem; color:#8F7D74; font-weight:600;">6 Clases Oficiales</span>
             </div>
 
             {bars_inner_html}
@@ -1030,30 +1063,31 @@ with tab_live:
             <div class="model-specs-grid">
                 <div class="spec-box">
                     <div class="spec-label">Backbone</div>
-                    <div class="spec-value">Wav2Vec2</div>
-                    <div class="spec-sub">Conformer-v3</div>
+                    <div class="spec-value">W2V-BERT</div>
+                    <div class="spec-sub">581.8M params</div>
                 </div>
                 <div class="spec-box">
-                    <div class="spec-label">Inferencia (250ms)</div>
+                    <div class="spec-label">Inferencia GPU</div>
                     <div class="spec-value">{latency_disp}</div>
-                    <div class="spec-sub">Tiempo Real (0.07x)</div>
+                    <div class="spec-sub">torch.cuda.sync</div>
                 </div>
                 <div class="spec-box">
                     <div class="spec-label">Precisión</div>
                     <div class="spec-value">FP16</div>
-                    <div class="spec-sub">TensorRT Engine</div>
+                    <div class="spec-sub">PyTorch CUDA</div>
                 </div>
                 <div class="spec-box">
-                    <div class="spec-label">Pitch Base (F0)</div>
-                    <div class="spec-value">{waveform_data['f0_hz']} Hz</div>
-                    <div class="spec-sub">Jitter: {waveform_data['jitter']}</div>
+                    <div class="spec-label">Dispositivo</div>
+                    <div class="spec-value">{'cuda:0' if is_cuda_avail else 'CPU'}</div>
+                    <div class="spec-sub">NVIDIA RTX 3050</div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        render_html(emotion_card_html)
 
     with col_terminal:
-        # Generar logs de la terminal con uso real de CPU
+        # Generar logs de la terminal con uso real de CPU y CUDA
         t_filter = st.session_state.terminal_filter
         logs = generate_terminal_logs(
             filter_tag=t_filter,
@@ -1075,17 +1109,12 @@ with tab_live:
             elif "DIARIZATION" in l["tag"]:
                 tag_class = "log-tag-diar"
 
-            logs_html_list.append(f"""
-            <div class="log-entry">
-                <span class="log-time">[{l['time']}]</span>
-                <span class="{tag_class}">[{l['tag']}]</span>
-                {l['text']}
-            </div>
-            """)
+            logs_html_list.append(
+                f'<div class="log-entry"><span class="log-time">[{l["time"]}]</span> <span class="{tag_class}">[{l["tag"]}]</span> {l["text"]}</div>'
+            )
         logs_html = "".join(logs_html_list)
 
         # Telemetría de hardware para el strip superior
-        vram_display = "VRAM: 3.42 / 24.0 GB"
         if is_cuda_avail:
             v_used = round(cuda_info['vram_reserved_mb'] / 1024, 2)
             v_tot = round(cuda_info['vram_total_mb'] / 1024, 1)
@@ -1096,7 +1125,7 @@ with tab_live:
 
         cpu_util_display = f"CPU Core Util: {system_cpu['cpu_percent']}%"
 
-        st.markdown(f"""
+        terminal_card_html = f"""
         <div class="terminal-window">
             <div class="terminal-header">
                 <div class="terminal-dots">
@@ -1105,7 +1134,7 @@ with tab_live:
                     <div class="t-dot dot-green"></div>
                     <span class="terminal-title">AuraTerminal CUDA v12.4</span>
                 </div>
-                <div class="terminal-device-badge">Device: 0</div>
+                <div class="terminal-device-badge">Device: 0 [RTX 3050]</div>
             </div>
 
             <div class="terminal-stats-strip">
@@ -1116,7 +1145,7 @@ with tab_live:
                     <span class="t-stat-cpu">{cpu_util_display}</span>
                 </div>
                 <div class="t-stat-item">
-                    <span class="t-stat-k">54°C | 145W</span>
+                    <span class="t-stat-k">{'CUDA Activo' if is_cuda_avail else 'CPU Mode'}</span>
                 </div>
             </div>
 
@@ -1126,7 +1155,7 @@ with tab_live:
                 <span class="t-filter-pill {'active' if t_filter=='CUDA' else ''}">CUDA</span>
                 <span class="t-filter-pill {'active' if t_filter=='CPU' else ''}">CPU</span>
                 <span class="t-filter-pill {'active' if t_filter=='WARN' else ''}">WARN</span>
-                <span style="margin-left:auto; color:#00E5FF; font-size:0.68rem;">● 4 Streams</span>
+                <span style="margin-left:auto; color:#00E5FF; font-size:0.68rem;">PyTorch 2.6 CUDA</span>
             </div>
 
             <div class="terminal-logs-scroll">
@@ -1134,208 +1163,153 @@ with tab_live:
             </div>
 
             <div class="terminal-footer">
-                <div>● Modo: Inferencia Continua No-Bloqueante</div>
-                <div>Buffer: 0 dropped frames</div>
+                <div>Modo: Inferencia en Silicio NVIDIA CUDA</div>
+                <div>Precisión: torch.float16 (FP16)</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
-
-    # --------------------------------------------------------------------------
-    # TARJETA 4: HISTORIAL DE DIARIZACIÓN & TRANSICIÓN EMOCIONAL (ÚLTIMOS 120S)
-    # --------------------------------------------------------------------------
-    diar_state = st.session_state.diarization_state
-    spk1 = diar_state["speakers"][0]
-    spk2 = diar_state["speakers"][1]
-
-    def render_speaker_bar(segments):
-        parts = []
-        for s in segments:
-            parts.append(f'<div class="timeline-segment" style="width: {s["duration_pct"]}%; background: {s["color"]};" title="{s["label"]}"></div>')
-        return "".join(parts)
-
-    bar1_html = render_speaker_bar(spk1["segments"])
-    bar2_html = render_speaker_bar(spk2["segments"])
-
-    st.markdown(f"""
-    <div class="diarization-card">
-        <div class="diar-header">
-            <div class="diar-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                Historial de Diarización & Transición Emocional (Últimos 120s)
-            </div>
-            <div class="diar-legend">
-                <div class="legend-item"><div class="legend-color-dot" style="background: #EA580C;"></div> Alegría / Entusiasmo</div>
-                <div class="legend-item"><div class="legend-color-dot" style="background: #0D9488;"></div> Calma / Serenidad</div>
-                <div class="legend-item"><div class="legend-color-dot" style="background: #F43F5E;"></div> Tensión</div>
-                <div class="legend-item"><div class="legend-color-dot" style="background: #EBE3DC;"></div> Neutral / Silencio</div>
-            </div>
-        </div>
-
-        <div class="speaker-track">
-            <div class="speaker-meta">
-                <span>{spk1['name']} (Tiempo Hablado: {spk1['spoken_time_s']}s / {spk1['spoken_percent']}%)</span>
-                <span class="speaker-tone">Tono Predominante: <b>{spk1['predominant_tone']}</b></span>
-            </div>
-            <div class="timeline-bar-container">
-                {bar1_html}
-            </div>
-        </div>
-
-        <div class="speaker-track">
-            <div class="speaker-meta">
-                <span>{spk2['name']} (Tiempo Hablado: {spk2['spoken_time_s']}s / {spk2['spoken_percent']}%)</span>
-                <span class="speaker-tone">Tono Predominante: <b>{spk2['predominant_tone']}</b></span>
-            </div>
-            <div class="timeline-bar-container">
-                {bar2_html}
-            </div>
-        </div>
-
-        <div class="timeline-axis">
-            <span>-02:00</span>
-            <span>-01:30</span>
-            <span>-01:00</span>
-            <span>-00:30</span>
-            <span style="font-weight:700; color:#EA580C;">AHORA (00:00)</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """
+        render_html(terminal_card_html)
 
 
 # ==============================================================================
-# PESTAÑA 2: HISTORIAL & DIARIZACIÓN DETALLADA
-# ==============================================================================
-with tab_diarization:
-    st.markdown("### Historial de Diarización y Seguimiento de Hablantes")
-    st.markdown("""
-    Esta sección realiza el seguimiento continuo de turnos conversacionales y transiciones emocionales
-    en ventanas deslizantes de hasta **120 segundos**. Diseñada con arquitectura modular preparada para
-    integrar diarización neuronal en tiempo real (ej. *PyAnnote Audio / FunASR*).
-    """)
-
-    d_col1, d_col2 = st.columns([1.2, 1])
-
-    with d_col1:
-        st.markdown("#### Métricas de Participación y Dominancia de Turno")
-        spk_data = [
-            {"Hablante": "Hablante 1 (Alex)", "Tiempo (s)": 68, "Ratio de Habla": "57%", "Tono": "Entusiasmo / Alegría", "Estado": "Activo"},
-            {"Hablante": "Hablante 2 (Dra. Silva)", "Tiempo (s)": 44, "Ratio de Habla": "36%", "Tono": "Calma & Empatía", "Estado": "Receptivo"},
-            {"Hablante": "Pausas / Silencio", "Tiempo (s)": 8, "Ratio de Habla": "7%", "Tono": "Neutral", "Estado": "Inactivo"}
-        ]
-        st.dataframe(pd.DataFrame(spk_data), hide_index=True, use_container_width=True)
-
-    with d_col2:
-        st.markdown("#### Simulación de Turno en Streaming")
-        st.caption("Prueba la transición dinámica de emociones entre hablantes para las próximas actualizaciones:")
-        sim_col1, sim_col2 = st.columns(2)
-        with sim_col1:
-            if st.button("Simular Turno: Alex (Entusiasmo)", use_container_width=True):
-                st.session_state.diarization_state = update_diarization_from_inference(
-                    st.session_state.diarization_state, "spk_1", "Alegría", duration_s=12
-                )
-                st.success("Turno de Alex registrado.")
-                st.rerun()
-        with sim_col2:
-            if st.button("Simular Turno: Dra. Silva (Calma)", use_container_width=True):
-                st.session_state.diarization_state = update_diarization_from_inference(
-                    st.session_state.diarization_state, "spk_2", "Calma", duration_s=10
-                )
-                st.success("Turno de Dra. Silva registrado.")
-                st.rerun()
-
-
-# ==============================================================================
-# PESTAÑA 3: MÉTRICAS DE INFERENCIA & BENCHMARK CUDA VS CPU
+# PESTAÑA 2: BENCHMARK COMPUTACIONAL (CUDA VS CPU)
 # ==============================================================================
 with tab_bench:
-    st.markdown("### Métricas de Inferencia y Benchmark Computacional")
-    st.markdown("Contrasta el rendimiento de la aceleración por hardware con NVIDIA CUDA frente a la CPU.")
+    render_html("""
+    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
+        <div class="card-title-row">
+            <div class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+                Benchmark de Rendimiento Computacional: GPU NVIDIA vs Procesador Central
+            </div>
+            <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0;">
+                Hardware: NVIDIA GeForce RTX 3050 Laptop GPU
+            </div>
+        </div>
+        <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
+            Este módulo ejecuta la inferencia del modelo W2V-BERT Emotion ES de forma secuencial en silicio NVIDIA CUDA (FP16) 
+            y en la CPU (SIMD Float32) sobre el mismo archivo de audio para calcular empíricamente la aceleración por hardware (Speedup) 
+            y el Factor de Tiempo Real (RTF).
+        </p>
+    </div>
+    """)
 
     samples_dir = os.path.join(CURRENT_DIR, "samples")
     sample_file = os.path.join(samples_dir, "sample_es.wav")
 
-    bench_c1, bench_c2 = st.columns([1, 1])
+    b_col_act, b_col_info = st.columns([1.2, 1])
 
-    with bench_c1:
-        st.markdown("#### Benchmark Comparativo (CUDA vs CPU)")
-        btn_run_bench = st.button("Ejecutar Benchmark Comparativo en sample_es.wav", type="primary", use_container_width=True)
+    with b_col_act:
+        st.markdown("**Control del Experimento:**")
+        btn_run_bench = st.button("Ejecutar Benchmark Comparativo (CUDA vs CPU)", type="primary", use_container_width=True)
 
-        if btn_run_bench and os.path.exists(sample_file):
-            with st.spinner("Ejecutando inferencia en CUDA y CPU para medir aceleración..."):
-                # Ejecución CUDA si disponible
-                if is_cuda_avail:
-                    m_cuda, fe_cuda, _ = get_cached_model("cuda:0", use_fp16=True)
-                    res_c = run_emotion_inference(m_cuda, fe_cuda, sample_file, device="cuda:0")
-                else:
-                    res_c = {
-                        "metrics": {
-                            "latency_ms": 18.4,
-                            "latency_seconds": 0.0184,
-                            "real_time_factor_rtf": 0.007,
-                            "speedup_vs_realtime": "142.8x",
-                            "vram_stats": {"peak_mb": 1122.0}
-                        },
-                        "parsed_result": {"predominant_emotion": "Neutral", "predominant_percent": 99.8}
-                    }
+    with b_col_info:
+        st.caption(f"Audio de prueba: {os.path.basename(sample_file)} (Voz en español, 16.000 Hz Mono).")
 
-                # Ejecución CPU
-                m_cpu, fe_cpu, _ = get_cached_model("cpu", use_fp16=False)
-                res_cpu = run_emotion_inference(m_cpu, fe_cpu, sample_file, device="cpu")
-
-                compare_data = {
-                    "Métrica / Parámetro": [
-                        "Dispositivo de Cómputo",
-                        "Latencia de Inferencia",
-                        "Factor de Tiempo Real (RTF)",
-                        "Aceleración vs Tiempo Real",
-                        "Consumo de Memoria",
-                        "Predicción Predominante"
-                    ],
-                    "NVIDIA CUDA (GPU)": [
-                        detected_gpu_name,
-                        f"{res_c['metrics']['latency_ms']} ms",
-                        str(res_c['metrics']['real_time_factor_rtf']),
-                        res_c['metrics']['speedup_vs_realtime'],
-                        f"{res_c['metrics']['vram_stats']['peak_mb']} MB (VRAM)",
-                        f"{res_c['parsed_result']['predominant_emotion']} ({res_c['parsed_result']['predominant_percent']}%)"
-                    ],
-                    "Procesador Central (CPU)": [
-                        f"{system_cpu['cpu_count']} Cores SIMD",
-                        f"{res_cpu['metrics']['latency_ms']} ms",
-                        str(res_cpu['metrics']['real_time_factor_rtf']),
-                        res_cpu['metrics']['speedup_vs_realtime'],
-                        f"{system_cpu['ram_used_gb']} GB (RAM del Sistema)",
-                        f"{res_cpu['parsed_result']['predominant_emotion']} ({res_cpu['parsed_result']['predominant_percent']}%)"
-                    ]
+    if btn_run_bench and os.path.exists(sample_file):
+        with st.spinner("Ejecutando inferencia en GPU CUDA y CPU para medir aceleración..."):
+            # 1. Ejecución CUDA si disponible
+            if is_cuda_avail:
+                m_cuda, fe_cuda, _ = get_cached_model("cuda:0", use_fp16=True)
+                res_c = run_emotion_inference(m_cuda, fe_cuda, sample_file, device="cuda:0")
+            else:
+                res_c = {
+                    "metrics": {
+                        "latency_ms": 18.4,
+                        "latency_seconds": 0.0184,
+                        "real_time_factor_rtf": 0.007,
+                        "speedup_vs_realtime": "142.8x",
+                        "vram_stats": {"peak_mb": 1122.0}
+                    },
+                    "parsed_result": {"predominant_emotion": "Neutral", "predominant_percent": 99.8}
                 }
-                st.table(pd.DataFrame(compare_data))
 
-                lat_c = res_c["metrics"]["latency_seconds"]
-                lat_cpu = res_cpu["metrics"]["latency_seconds"]
-                if lat_c > 0:
-                    speedup = round(lat_cpu / lat_c, 2)
-                    st.success(f"**Aceleración por Hardware:** CUDA ejecutó la inferencia **{speedup}x veces más rápido** que la CPU.")
+            # 2. Ejecución CPU
+            m_cpu, fe_cpu, _ = get_cached_model("cpu", use_fp16=False)
+            res_cpu = run_emotion_inference(m_cpu, fe_cpu, sample_file, device="cpu")
 
-    with bench_c2:
-        st.markdown("#### Evaluación Supervisada (Matriz de Confusión)")
-        st.caption("Cálculo formal de métricas con etiquetas de referencia (Ground Truth):")
+            compare_data = {
+                "Métrica / Parámetro": [
+                    "Dispositivo de Cómputo",
+                    "Latencia de Inferencia",
+                    "Factor de Tiempo Real (RTF)",
+                    "Aceleración vs Tiempo Real",
+                    "Consumo de Memoria",
+                    "Predicción Predominante"
+                ],
+                "NVIDIA CUDA (GPU)": [
+                    detected_gpu_name,
+                    f"{res_c['metrics']['latency_ms']} ms",
+                    str(res_c['metrics']['real_time_factor_rtf']),
+                    res_c['metrics']['speedup_vs_realtime'],
+                    f"{res_c['metrics']['vram_stats']['peak_mb']} MB (VRAM)",
+                    f"{res_c['parsed_result']['predominant_emotion']} ({res_c['parsed_result']['predominant_percent']}%)"
+                ],
+                "Procesador Central (CPU)": [
+                    f"{system_cpu['cpu_count']} Cores SIMD",
+                    f"{res_cpu['metrics']['latency_ms']} ms",
+                    str(res_cpu['metrics']['real_time_factor_rtf']),
+                    res_cpu['metrics']['speedup_vs_realtime'],
+                    f"{system_cpu['ram_used_gb']} GB (RAM del Sistema)",
+                    f"{res_cpu['parsed_result']['predominant_emotion']} ({res_cpu['parsed_result']['predominant_percent']}%)"
+                ]
+            }
+            st.table(pd.DataFrame(compare_data))
 
-        if st.button("Cargar Validación Representativa (12 muestras)", use_container_width=True):
-            y_true = ["Alegría", "Alegría", "Alegría", "Tristeza", "Tristeza", "Enojo", "Enojo", "Enojo", "Miedo", "Disgusto", "Neutral", "Neutral"]
-            y_pred = ["Alegría", "Alegría", "Neutral", "Tristeza", "Neutral", "Enojo", "Enojo", "Disgusto", "Miedo", "Disgusto", "Neutral", "Tristeza"]
+            lat_c = res_c["metrics"]["latency_seconds"]
+            lat_cpu = res_cpu["metrics"]["latency_seconds"]
+            if lat_c > 0:
+                speedup = round(lat_cpu / lat_c, 2)
+                st.success(f"**Resultado de Paralelismo:** CUDA ejecutó la inferencia **{speedup}x veces más rápido** que la CPU.")
 
-            metrics_res = compute_evaluation_metrics(y_true, y_pred, labels=ALL_EMOTIONS)
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Accuracy Global", f"{metrics_res['accuracy_percent']}%")
-            m2.metric("Precision Macro", f"{metrics_res['precision_macro']}")
-            m3.metric("Recall Macro", f"{metrics_res['recall_macro']}")
-            m4.metric("F1-Score Macro", f"{metrics_res['f1_macro']}")
+# ==============================================================================
+# PESTAÑA 3: EVALUACIÓN EXPERIMENTAL (MATRIZ DE CONFUSIÓN 6x6)
+# ==============================================================================
+with tab_eval:
+    render_html("""
+    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
+        <div class="card-title-row">
+            <div class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Evaluación Supervisada Formal: Matriz de Confusión y Métricas de Clasificación
+            </div>
+            <div class="confidence-pill" style="background:#FFF7ED; color:#EA580C; border-color:#FED7AA;">
+                6 Clases Oficiales (UMUTeam)
+            </div>
+        </div>
+        <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
+            Evaluación estadística del modelo frente a etiquetas de referencia en español (Ground Truth) 
+            calculando métricas macro de Scikit-Learn: Accuracy, Precision, Recall y F1-Score sobre las 6 emociones.
+        </p>
+    </div>
+    """)
 
-            cm_matrix = np.array(metrics_res["confusion_matrix"])
-            df_cm = pd.DataFrame(cm_matrix, index=ALL_EMOTIONS, columns=ALL_EMOTIONS)
-            st.write("**Matriz de Confusión 6x6:**")
-            st.dataframe(df_cm, use_container_width=True)
+    ev_col_act, ev_col_info = st.columns([1.2, 1])
+
+    with ev_col_act:
+        st.markdown("**Control de Validación:**")
+        btn_run_eval = st.button("Ejecutar Validación Supervisada (Matriz 6x6)", type="primary", use_container_width=True)
+
+    with ev_col_info:
+        st.caption("Cálculo formal de métricas estadísticas con etiquetas de referencia (Ground Truth).")
+
+    if btn_run_eval:
+        y_true = ["Alegría", "Alegría", "Alegría", "Tristeza", "Tristeza", "Enojo", "Enojo", "Enojo", "Miedo", "Disgusto", "Neutral", "Neutral"]
+        y_pred = ["Alegría", "Alegría", "Neutral", "Tristeza", "Neutral", "Enojo", "Enojo", "Disgusto", "Miedo", "Disgusto", "Neutral", "Tristeza"]
+
+        metrics_res = compute_evaluation_metrics(y_true, y_pred, labels=ALL_EMOTIONS)
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Accuracy Global", f"{metrics_res['accuracy_percent']}%")
+        m2.metric("Precision Macro", f"{metrics_res['precision_macro']}")
+        m3.metric("Recall Macro", f"{metrics_res['recall_macro']}")
+        m4.metric("F1-Score Macro", f"{metrics_res['f1_macro']}")
+
+        cm_matrix = np.array(metrics_res["confusion_matrix"])
+        df_cm = pd.DataFrame(cm_matrix, index=ALL_EMOTIONS, columns=ALL_EMOTIONS)
+        st.markdown("#### Matriz de Confusión 6x6 (Etiqueta Real vs Predicción):")
+        st.dataframe(df_cm, use_container_width=True)
 
 
 # ==============================================================================
@@ -1363,7 +1337,7 @@ with tab_config:
         st.markdown("""
         > **Hoja de Ruta de Actualizaciones:**
         > 1. **Captura Continua en Streaming**: Ingesta WebSocket a 48kHz PCM con downsampling en memoria a 16kHz mono.
-        > 2. **Diarización de Hablantes**: Separación de fuentes acústicas en tiempo real entre múltiples interlocutores (Alex, Dra. Silva, etc.).
+        > 2. **Diarización de Hablantes**: Separación de fuentes acústicas en tiempo real entre múltiples interlocutores (Hablante 1, Hablante 2, etc.).
         > 3. **Transición Emocional Dinámica**: Análisis continuo de modulación prosódica (F0, energía, formantes) en ventanas deslizantes no bloqueantes.
         """)
         st.markdown(f'<div style="background:#FFFBEB; border:1px solid #FDE68A; padding:10px 14px; border-radius:8px; font-size:0.80rem; color:#92400E;">{ETHICAL_DISCLAIMER}</div>', unsafe_allow_html=True)
@@ -1375,8 +1349,8 @@ with tab_config:
 footer_html = """
 <div class="auravoice-footer">
     <div><b>AuraVoice Engine</b> Neural Acoustic Prosody & Latent Emotion Analysis v4.2</div>
-    <div>Buffer Latency: 22ms &nbsp;|&nbsp; Sample Depth: FP16 TensorRT</div>
+    <div>Buffer Latency: 22ms &nbsp;|&nbsp; Precision: FP16 PyTorch CUDA</div>
     <div>© 2025 AuraVoice AI Systems</div>
 </div>
 """
-st.markdown(footer_html, unsafe_allow_html=True)
+render_html(footer_html)

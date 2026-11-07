@@ -65,30 +65,30 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
     # Determinar título latente compuesto y etiqueta semántica
     if valence >= 0.3:
         if arousal >= 0.5:
-            title = "Entusiasmo / Expresivo"
-            tag = "● Dinámico"
+            title = "Alegría / Entusiasmo"
+            tag = "● Expresivo"
             tag_color = "#EA580C"
         else:
-            title = "Calma Positiva / Receptivo"
-            tag = "● Receptivo"
+            title = "Alegría / Calma Positiva"
+            tag = "● Positivo"
             tag_color = "#EA580C"
     elif valence <= -0.3:
         if arousal >= 0.5:
-            title = "Tensión / Alerta Elevada"
+            title = "Enojo / Tensión Elevada"
             tag = "● Agitado"
             tag_color = "#F43F5E"
         else:
-            title = "Atenuación / Introspección"
-            tag = "● Reservado"
+            title = "Tristeza / Introspección"
+            tag = "● Decaído"
             tag_color = "#0D9488"
     else:
         if arousal >= 0.5:
-            title = "Atención Activa / Vigilante"
+            title = "Alerta / Atención Activa"
             tag = "● Atento"
             tag_color = "#EA580C"
         else:
-            title = "Equilibrio Neutral / Neutro"
-            tag = "● Receptivo"
+            title = "Neutral / Reposo Acústico"
+            tag = "● Neutral"
             tag_color = "#574A43"
 
     val_sign = f"+{valence}" if valence >= 0 else f"{valence}"
@@ -144,14 +144,14 @@ def parse_emotion_probabilities(
     # Calcular vector circunflejo Valence/Arousal
     circumplex = compute_circumplex_state(emotion_scores)
 
-    # Desglose de Top clases con formato refinado
+    # Desglose de Top clases oficiales de W2V-BERT Emotion ES (UMUTeam)
     class_mapping = {
-        "Alegría": "Entusiasmo / Alegría",
-        "Neutral": "Neutral / Pausado",
-        "Tristeza": "Calma / Serenidad",
-        "Enojo": "Tensión / Ansiedad",
-        "Miedo": "Incertidumbre / Alerta",
-        "Disgusto": "Frustración / Tensión"
+        "Alegría": "Alegría",
+        "Neutral": "Neutral",
+        "Tristeza": "Tristeza",
+        "Enojo": "Enojo",
+        "Miedo": "Miedo",
+        "Disgusto": "Disgusto"
     }
 
     formatted_breakdown = []

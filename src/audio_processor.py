@@ -35,6 +35,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
         "duration_seconds": 0.0,
         "sample_rate": 0,
         "channels": 1,
+        "channels_name": "Mono",
         "size_kb": round(os.path.getsize(file_path) / 1024, 2) if os.path.exists(file_path) else 0.0
     }
 
@@ -45,6 +46,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
                 "duration_seconds": round(info.duration, 2),
                 "sample_rate": info.samplerate,
                 "channels": info.channels,
+                "channels_name": "Mono" if info.channels == 1 else "Estéreo",
                 "format": info.format.lower(),
             })
             return metadata
@@ -63,6 +65,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
                     "duration_seconds": round(duration, 2),
                     "sample_rate": sr,
                     "channels": channels,
+                    "channels_name": "Mono" if channels == 1 else "Estéreo",
                     "format": "wav"
                 })
                 return metadata
@@ -81,6 +84,7 @@ def get_audio_metadata(file_path: str) -> Dict[str, Any]:
         if len(lines) >= 3:
             metadata["sample_rate"] = int(lines[0])
             metadata["channels"] = int(lines[1])
+            metadata["channels_name"] = "Mono" if metadata["channels"] == 1 else "Estéreo"
             metadata["duration_seconds"] = round(float(lines[2]), 2)
     except Exception as exc:
         metadata["error"] = str(exc)

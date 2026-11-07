@@ -48,22 +48,13 @@ def extract_waveform_bars(
         jitter_str = "0.12% Estable"
         vad_active = "98.4%"
     else:
-        # Perfil por defecto tipo habla activa suave (como en el mockup)
-        # Curva de modulación armónica realista
-        np.random.seed(seed if seed is not None else 42)
-        base_pattern = [
-            0.12, 0.22, 0.38, 0.45, 0.30, 0.60, 0.78, 0.85, 0.92, 0.70,
-            0.40, 0.25, 0.35, 0.55, 0.88, 0.95, 0.75, 0.60, 0.45, 0.30,
-            0.50, 0.72, 0.84, 0.65, 0.35, 0.20, 0.45, 0.70, 0.90, 0.82,
-            0.55, 0.32, 0.18, 0.40, 0.65, 0.85, 0.78, 0.50, 0.28, 0.15,
-            0.35, 0.60, 0.80, 0.72, 0.45, 0.22, 0.14, 0.30, 0.55, 0.40
-        ]
-        bars = base_pattern[:num_bars]
-        rms_db = -14.2
-        peak_db = -3.1
-        f0_hz = 142
-        jitter_str = "0.12% Estable"
-        vad_active = "98.4%"
+        # Perfil en espera (sin audio cargado todavía)
+        bars = [0.08] * num_bars
+        rms_db = "---"
+        peak_db = "---"
+        f0_hz = "---"
+        jitter_str = "En espera"
+        vad_active = "Inactivo"
 
     return {
         "bars": bars,
@@ -72,7 +63,7 @@ def extract_waveform_bars(
         "f0_hz": f0_hz,
         "jitter": jitter_str,
         "vad_active_pct": vad_active,
-        "mel_bands": 128,
-        "buffer_latency_ms": 18.4
+        "mel_bands": 80,
+        "buffer_latency_ms": 0.0
     }
 

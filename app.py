@@ -6,6 +6,9 @@ con aceleración NVIDIA CUDA / Fallback CPU multinúcleo y modelo UMUTeam/w2v-be
 
 import os
 import sys
+# Optimización de asignación de memoria PyTorch CUDA para evitar fragmentación en GPUs de 4 GB
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import time
 import tempfile
 import datetime
@@ -805,10 +808,50 @@ if "last_audio_array" not in st.session_state:
     st.session_state.last_audio_array = None
 
 
-@st.cache_resource(show_spinner=False)
-def get_cached_model(device_choice: str, use_fp16: bool):
-    """Carga y mantiene en memoria los pesos de W2V-BERT Emotion ES."""
-    return load_emotion_model(device_name=device_choice, use_fp16=use_fp16)
+def get_active_model_bundle(is_e2v: bool, dev_choice: str):
+    """
+    Gestor dinámico de memoria VRAM para alternancia de modelos acústicos en GPUs de 4 GB.
+    Garantiza que únicamente el modelo seleccionado resida en la memoria de la GPU NVIDIA,
+    liberando y limpiando la memoria del modelo inactivo para evitar desbordamiento (OOM).
+    """
+    import gc
+    import torch
+
+    if is_e2v:
+        # Si W2V-BERT estaba en memoria de GPU, descargarlo y mover a CPU
+        if "umuteam_model" in st.session_state and st.session_state["umuteam_model"] is not None:
+            try:
+                st.session_state["umuteam_model"].to("cpu")
+            except Exception:
+                pass
+            st.session_state["umuteam_model"] = None
+            st.session_state["umuteam_extractor"] = None
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        from src.emotion2vec_engine import load_emotion2vec_model
+        return load_emotion2vec_model(device=dev_choice), None
+    else:
+        # Si emotion2vec estaba cargado, descargarlo
+        from src.emotion2vec_engine import unload_emotion2vec_model
+        unload_emotion2vec_model()
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        if "umuteam_model" not in st.session_state or st.session_state["umuteam_model"] is None:
+            m, fe, _ = load_emotion_model(device_name=dev_choice, use_fp16=True)
+            st.session_state["umuteam_model"] = m
+            st.session_state["umuteam_extractor"] = fe
+        else:
+            m = st.session_state["umuteam_model"]
+            fe = st.session_state["umuteam_extractor"]
+            if "cuda" in dev_choice and hasattr(m, "to"):
+                m.to(dev_choice)
+        return m, fe
 
 
 # Obtener telemetría de hardware
@@ -998,14 +1041,11 @@ with tab_live:
                     try:
                         dev_choice = "cuda:0" if is_cuda_avail else "cpu"
                         if is_e2v:
-                            from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference
-                            if is_cuda_avail:
-                                import torch
-                                torch.cuda.empty_cache()
-                            e2v_model = load_emotion2vec_model(device=dev_choice)
-                            inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=2.0, stride_sec=1.5)
+                            from src.emotion2vec_engine import run_emotion2vec_inference
+                            e2v_model, _ = get_active_model_bundle(is_e2v=True, dev_choice=dev_choice)
+                            inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=3.0, stride_sec=2.0)
                         else:
-                            m, fe, _ = get_cached_model(dev_choice, use_fp16=True)
+                            m, fe = get_active_model_bundle(is_e2v=False, dev_choice=dev_choice)
                             inf_res = run_emotion_inference(m, fe, audio_target_path, device=dev_choice)
 
                         if inf_res["status"] == "EXITOSA":

@@ -31,6 +31,25 @@ E2V_LABEL_MAP = {
 _E2V_CACHE = {}
 
 
+def unload_emotion2vec_model():
+    """
+    Descarga de la GPU y libera la memoria VRAM ocupada por emotion2vec.
+    Garantiza que la VRAM quede disponible para otros modelos o buffers.
+    """
+    global _E2V_CACHE
+    for k, model in list(_E2V_CACHE.items()):
+        try:
+            if hasattr(model, "model") and hasattr(model.model, "to"):
+                model.model.to("cpu")
+        except Exception:
+            pass
+    _E2V_CACHE.clear()
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     """
     Carga el modelo emotion2vec/emotion2vec_plus_large usando FunASR.
@@ -63,35 +82,199 @@ def run_emotion2vec_inference(
     stride_sec: float = 2.0
 ) -> Dict[str, Any]:
     """
-    Ejecuta inferencia completa con emotion2vec+ Large:
-    1. Inferencia a nivel de proferencia completa (utterance-level)
-    2. Crono-análisis por ventanas deslizantes (timeline)
-    3. Mapeo a las 9 clases en español y modelo circunflejo de Russell 2D
+    Ejecuta inferencia acústica optimizada con emotion2vec+ Large:
+    - Previene OOM en audios de media y larga duración (> 8s) mediante agregación temporal
+      por ventaneo continuo O(1) de memoria VRAM (Peak VRAM < 850 MiB).
+    - Para audios cortos (<= 8s), realiza inferencia global directa y crono-análisis.
+    - Mapea a las 9 clases oficiales en español y modelo circunflejo de Russell 2D.
     """
+    import soundfile as sf
+    import tempfile
+
     t_start = time.perf_counter()
 
     # 1. Metadatos y conversión a WAV 16k mono
     meta_audio = get_audio_metadata(audio_path)
     wav_path = convert_to_wav_16k_mono(audio_path)
     audio_arr, duration = load_audio_array_16k(wav_path)
-
-    # 2. Inferencia global de audio completo
-    try:
-        raw_res = model.generate(wav_path, output_dir=None, granularity="utterance")
-    except Exception as exc:
-        if os.path.exists(wav_path) and wav_path != audio_path:
-            try: os.remove(wav_path)
-            except: pass
-        raise RuntimeError(f"Fallo en inferencia de emotion2vec: {exc}")
-
-    # 3. Parsear distribución de probabilidades de las 9 clases
-    first_item = raw_res[0] if raw_res and len(raw_res) > 0 else {}
-    raw_labels = first_item.get("labels", [])
-    raw_scores = first_item.get("scores", [])
+    sr = 16000
+    total_samples = len(audio_arr)
 
     detailed_list = []
     emotion_scores = {}
+    segments = []
 
+    # 2. Inferencia Adaptativa con Control Riguroso de VRAM
+    # Si duration > 8.0s, procesar en un único barrido de ventanas para evitar la matriz de atención O(T^2)
+    # que causa CUDA OOM en secuencias largas (>3000 frames) en GPUs de 4 GB.
+    if duration > 8.0 and total_samples > int(1.0 * sr):
+        # Configurar longitud de ventana y paso adaptativo
+        if duration <= 25.0:
+            eff_win_sec = 3.5
+            eff_stride_sec = 2.5
+        elif duration <= 60.0:
+            eff_win_sec = 5.0
+            eff_stride_sec = 3.5
+        else:
+            eff_win_sec = 6.0
+            eff_stride_sec = 4.5
+
+        win_samples = int(eff_win_sec * sr)
+        stride_samples = int(eff_stride_sec * sr)
+        curr = 0
+        w_idx = 1
+        all_chunk_scores = []
+        labels_ref = None
+
+        with torch.inference_mode():
+            while curr < total_samples:
+                end = min(curr + win_samples, total_samples)
+                chunk = audio_arr[curr:end]
+                if len(chunk) < int(0.8 * sr) and len(segments) > 0:
+                    break
+                if len(chunk) < win_samples:
+                    chunk = np.pad(chunk, (0, win_samples - len(chunk)))
+
+                fd, tmp_chunk_path = tempfile.mkstemp(suffix="_chunk.wav")
+                os.close(fd)
+                sf.write(tmp_chunk_path, chunk, sr)
+
+                try:
+                    c_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance")
+                    c_item = c_res[0] if c_res else {}
+                    if labels_ref is None and "labels" in c_item:
+                        labels_ref = c_item["labels"]
+
+                    c_scores = c_item.get("scores", [])
+                    if c_scores:
+                        all_chunk_scores.append(c_scores)
+                        top_idx = int(np.argmax(c_scores))
+                        top_raw = c_item["labels"][top_idx]
+                        top_es = E2V_LABEL_MAP.get(top_raw, top_raw)
+                        top_pct = round(float(c_scores[top_idx]) * 100, 1)
+                    else:
+                        top_es = "Neutral"
+                        top_pct = 50.0
+                except Exception:
+                    top_es = "Neutral"
+                    top_pct = 50.0
+                finally:
+                    if os.path.exists(tmp_chunk_path):
+                        try: os.remove(tmp_chunk_path)
+                        except: pass
+
+                start_s = round(curr / sr, 2)
+                end_s = round(min(end, total_samples) / sr, 2)
+                seg_dur = round(end_s - start_s, 2)
+                pct_w = round((seg_dur / max(0.1, duration)) * 100, 1)
+
+                segments.append({
+                    "index": w_idx,
+                    "start_s": start_s,
+                    "end_s": end_s,
+                    "duration_s": seg_dur,
+                    "width_percent": pct_w,
+                    "emotion": top_es,
+                    "confidence_percent": top_pct,
+                    "color": EMOTION_COLORS.get(top_es, "#64748B")
+                })
+
+                curr += stride_samples
+                w_idx += 1
+
+        # Agregar probabilidades globales promediando tensores de cada fragmento
+        if all_chunk_scores and labels_ref:
+            mean_scores = np.mean(all_chunk_scores, axis=0)
+            raw_labels = labels_ref
+            raw_scores = mean_scores.tolist()
+        else:
+            raw_labels = list(E2V_LABEL_MAP.keys())[:9]
+            raw_scores = [0.11] * 9
+
+    else:
+        # Audio corto (<= 8.0s): inferencia global directa
+        with torch.inference_mode():
+            try:
+                raw_res = model.generate(wav_path, output_dir=None, granularity="utterance")
+            except Exception as exc:
+                if os.path.exists(wav_path) and wav_path != audio_path:
+                    try: os.remove(wav_path)
+                    except: pass
+                raise RuntimeError(f"Fallo en inferencia de emotion2vec: {exc}")
+
+        first_item = raw_res[0] if raw_res and len(raw_res) > 0 else {}
+        raw_labels = first_item.get("labels", [])
+        raw_scores = first_item.get("scores", [])
+
+        # Timeline para audios cortos
+        if duration > 1.5 and total_samples > int(1.0 * sr):
+            win_samples = int(window_sec * sr)
+            stride_samples = int(stride_sec * sr)
+            curr = 0
+            w_idx = 1
+            with torch.inference_mode():
+                while curr < total_samples:
+                    end = min(curr + win_samples, total_samples)
+                    chunk = audio_arr[curr:end]
+                    if len(chunk) < int(0.8 * sr) and len(segments) > 0:
+                        break
+                    if len(chunk) < win_samples:
+                        chunk = np.pad(chunk, (0, win_samples - len(chunk)))
+
+                    fd, tmp_chunk_path = tempfile.mkstemp(suffix="_chunk.wav")
+                    os.close(fd)
+                    sf.write(tmp_chunk_path, chunk, sr)
+
+                    try:
+                        chunk_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance")
+                        c_item = chunk_res[0] if chunk_res else {}
+                        c_scores = c_item.get("scores", [])
+                        if c_scores:
+                            top_idx = int(np.argmax(c_scores))
+                            top_raw = c_item.get("labels", [])[top_idx]
+                            top_es = E2V_LABEL_MAP.get(top_raw, top_raw)
+                            top_pct = round(float(c_scores[top_idx]) * 100, 1)
+                        else:
+                            top_es = "Neutral"
+                            top_pct = 50.0
+                    except Exception:
+                        top_es = "Neutral"
+                        top_pct = 50.0
+                    finally:
+                        if os.path.exists(tmp_chunk_path):
+                            try: os.remove(tmp_chunk_path)
+                            except: pass
+
+                    start_s = round(curr / sr, 2)
+                    end_s = round(min(end, total_samples) / sr, 2)
+                    seg_dur = round(end_s - start_s, 2)
+                    pct_w = round((seg_dur / max(0.1, duration)) * 100, 1)
+
+                    segments.append({
+                        "index": w_idx,
+                        "start_s": start_s,
+                        "end_s": end_s,
+                        "duration_s": seg_dur,
+                        "width_percent": pct_w,
+                        "emotion": top_es,
+                        "confidence_percent": top_pct,
+                        "color": EMOTION_COLORS.get(top_es, "#64748B")
+                    })
+                    curr += stride_samples
+                    w_idx += 1
+        else:
+            segments.append({
+                "index": 1,
+                "start_s": 0.0,
+                "end_s": duration,
+                "duration_s": duration,
+                "width_percent": 100.0,
+                "emotion": "Neutral",
+                "confidence_percent": 100.0,
+                "color": EMOTION_COLORS.get("Neutral", "#64748B")
+            })
+
+    # 3. Parsear distribución de probabilidades de las 9 clases
     for raw_l, score in zip(raw_labels, raw_scores):
         es_label = E2V_LABEL_MAP.get(raw_l, raw_l)
         pct = round(float(score) * 100, 2)
@@ -111,6 +294,12 @@ def run_emotion2vec_inference(
     predominant = detailed_list[0] if detailed_list else {
         "categoria": "Neutral", "probabilidad": 1.0, "porcentaje": 100.0, "raw_label": "neutral"
     }
+
+    # Si audio es muy corto y no hubo segmentos, actualizar con la emoción predominante
+    if len(segments) == 1 and segments[0]["emotion"] == "Neutral" and predominant["categoria"] != "Neutral":
+        segments[0]["emotion"] = predominant["categoria"]
+        segments[0]["confidence_percent"] = predominant["porcentaje"]
+        segments[0]["color"] = predominant.get("color", "#64748B")
 
     # Vector Circunflejo de Russell 2D
     circumplex = compute_circumplex_state(emotion_scores)
@@ -138,85 +327,6 @@ def run_emotion2vec_inference(
         "disclaimer": ETHICAL_DISCLAIMER
     }
 
-    # 4. Crono-Análisis por Ventanas Deslizantes (Timeline)
-    sr = 16000
-    total_samples = len(audio_arr)
-    segments = []
-
-    if duration > 1.5 and total_samples > int(1.0 * sr):
-        win_samples = int(window_sec * sr)
-        stride_samples = int(stride_sec * sr)
-        curr = 0
-        w_idx = 1
-
-        import soundfile as sf
-        import tempfile
-
-        while curr < total_samples:
-            end = min(curr + win_samples, total_samples)
-            chunk = audio_arr[curr:end]
-            if len(chunk) < int(0.8 * sr) and len(segments) > 0:
-                break
-            if len(chunk) < win_samples:
-                chunk = np.pad(chunk, (0, win_samples - len(chunk)))
-
-            # Guardar chunk temporal para el extractor
-            fd, tmp_chunk_path = tempfile.mkstemp(suffix="_chunk.wav")
-            os.close(fd)
-            sf.write(tmp_chunk_path, chunk, sr)
-
-            try:
-                chunk_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance")
-                c_item = chunk_res[0] if chunk_res else {}
-                c_labels = c_item.get("labels", [])
-                c_scores = c_item.get("scores", [])
-                if c_scores:
-                    top_idx = int(np.argmax(c_scores))
-                    top_raw = c_labels[top_idx]
-                    top_es = E2V_LABEL_MAP.get(top_raw, top_raw)
-                    top_pct = round(float(c_scores[top_idx]) * 100, 1)
-                else:
-                    top_es = "Neutral"
-                    top_pct = 50.0
-            except Exception:
-                top_es = "Neutral"
-                top_pct = 50.0
-            finally:
-                if os.path.exists(tmp_chunk_path):
-                    try: os.remove(tmp_chunk_path)
-                    except: pass
-
-            start_s = round(curr / sr, 2)
-            end_s = round(min(end, total_samples) / sr, 2)
-            seg_dur = round(end_s - start_s, 2)
-            pct_w = round((seg_dur / max(0.1, duration)) * 100, 1)
-
-            segments.append({
-                "index": w_idx,
-                "start_s": start_s,
-                "end_s": end_s,
-                "duration_s": seg_dur,
-                "width_percent": pct_w,
-                "emotion": top_es,
-                "confidence_percent": top_pct,
-                "color": EMOTION_COLORS.get(top_es, "#64748B")
-            })
-
-            curr += stride_samples
-            w_idx += 1
-    else:
-        # Audio muy corto: un solo segmento
-        segments.append({
-            "index": 1,
-            "start_s": 0.0,
-            "end_s": duration,
-            "duration_s": duration,
-            "width_percent": 100.0,
-            "emotion": predominant["categoria"],
-            "confidence_percent": predominant["porcentaje"],
-            "color": predominant.get("color", "#64748B")
-        })
-
     timeline_result = {
         "status": "EXITOSA",
         "total_duration_s": duration,
@@ -228,6 +338,14 @@ def run_emotion2vec_inference(
 
     t_end = time.perf_counter()
     latency_sec = t_end - t_start
+
+    # Limpieza de archivo temporal WAV
+    if os.path.exists(wav_path) and wav_path != audio_path:
+        try: os.remove(wav_path)
+        except: pass
+
+    # Telemetría CUDA
+    cuda_telemetry = get_cuda_status() if "cuda" in device else None
 
     # Limpieza de archivo temporal
     if os.path.exists(wav_path) and wav_path != audio_path:

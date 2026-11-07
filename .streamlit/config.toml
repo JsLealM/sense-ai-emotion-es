@@ -1,0 +1,11 @@
+[server]
+fileWatcherType = "none"
+headless = true
+port = 8501
+folderWatchBlacklist = [".venv", "venv", "__pycache__", ".git"]
+
+[logger]
+level = "error"
+
+[client]
+toolbarMode = "minimal"

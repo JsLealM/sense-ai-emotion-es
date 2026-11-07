@@ -6,7 +6,9 @@ Compatible con PyTorch NVIDIA CUDA y CPU.
 """
 
 import os
+import sys
 import time
+import contextlib
 from typing import Dict, Any, List, Optional
 import numpy as np
 import torch
@@ -14,6 +16,20 @@ import torch
 from src.audio_processor import load_audio_array_16k, convert_to_wav_16k_mono, get_audio_metadata
 from src.result_parser import compute_circumplex_state, EMOTION_COLORS, ETHICAL_DISCLAIMER
 from src.cuda_monitor import get_cuda_status
+
+@contextlib.contextmanager
+def silence_stdio():
+    """Silencia completamente stdout y stderr para evitar contaminación del log de consola."""
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
 # Mapeo oficial de etiquetas chinas/inglesas de emotion2vec a español
 E2V_LABEL_MAP = {
@@ -64,12 +80,13 @@ def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     # Si se pide CUDA pero no está disponible, caer a CPU
     actual_device = device if ("cuda" in device and torch.cuda.is_available()) else "cpu"
 
-    model = AutoModel(
-        model="emotion2vec/emotion2vec_plus_large",
-        hub="hf",
-        device=actual_device,
-        disable_update=True
-    )
+    with silence_stdio():
+        model = AutoModel(
+            model="emotion2vec/emotion2vec_plus_large",
+            hub="hf",
+            device=actual_device,
+            disable_update=True
+        )
     _E2V_CACHE[cache_key] = model
     return model
 
@@ -140,7 +157,8 @@ def run_emotion2vec_inference(
                 sf.write(tmp_chunk_path, chunk, sr)
 
                 try:
-                    c_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance")
+                    with silence_stdio():
+                        c_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance", disable_pbar=True)
                     c_item = c_res[0] if c_res else {}
                     if labels_ref is None and "labels" in c_item:
                         labels_ref = c_item["labels"]
@@ -195,7 +213,8 @@ def run_emotion2vec_inference(
         # Audio corto (<= 8.0s): inferencia global directa
         with torch.inference_mode():
             try:
-                raw_res = model.generate(wav_path, output_dir=None, granularity="utterance")
+                with silence_stdio():
+                    raw_res = model.generate(wav_path, output_dir=None, granularity="utterance", disable_pbar=True)
             except Exception as exc:
                 if os.path.exists(wav_path) and wav_path != audio_path:
                     try: os.remove(wav_path)
@@ -226,7 +245,8 @@ def run_emotion2vec_inference(
                     sf.write(tmp_chunk_path, chunk, sr)
 
                     try:
-                        chunk_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance")
+                        with silence_stdio():
+                            chunk_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance", disable_pbar=True)
                         c_item = chunk_res[0] if chunk_res else {}
                         c_scores = c_item.get("scores", [])
                         if c_scores:

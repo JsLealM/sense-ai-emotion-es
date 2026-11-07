@@ -6,8 +6,22 @@ con aceleración NVIDIA CUDA / Fallback CPU multinúcleo y modelo UMUTeam/w2v-be
 
 import os
 import sys
+import warnings
+import logging
+
 # Optimización de asignación de memoria PyTorch CUDA para evitar fragmentación en GPUs de 4 GB
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+os.environ["STREAMLIT_LOGGER_LEVEL"] = "error"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+# Silenciar advertencias redundantes de librerías en terminal
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("funasr").setLevel(logging.ERROR)
+logging.getLogger("streamlit").setLevel(logging.ERROR)
+logging.getLogger().setLevel(logging.ERROR)
 
 import time
 import tempfile

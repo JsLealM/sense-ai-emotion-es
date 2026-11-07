@@ -82,7 +82,7 @@ def run_timeline_batch_inference(
     t_start = time.perf_counter()
 
     with torch.no_grad():
-        outputs = model(**cuda_inputs)
+        outputs = model(**cuda_inputs, return_dict=True)
         logits = outputs.logits
 
     if "cuda" in str(model_device):
@@ -179,7 +179,7 @@ def run_emotion_inference(
 
         # 4. Inferencia (Pase hacia adelante / Forward pass)
         with torch.no_grad():
-            outputs = model(**cuda_inputs)
+            outputs = model(**cuda_inputs, return_dict=True)
             logits_tensor = outputs.logits
 
     except torch.cuda.OutOfMemoryError as oom_exc:

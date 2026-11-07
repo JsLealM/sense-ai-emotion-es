@@ -187,11 +187,11 @@ streamlit run app.py
 Se abrirá automáticamente en tu navegador en:  
 `http://localhost:8501`
 
-### Pestañas de la Aplicación:
-1. **Pestaña 1: Análisis Emocional**: Carga archivos propios (WAV, MP3, M4A), reprodúcelos, obtén la tarjeta de emoción predominante, el gráfico comparativo de barras y la telemetría de VRAM y latencia.
-2. **Pestaña 2: Laboratorio de Pruebas y Benchmark**: Evalúa muestras pregrabadas y presiona el botón **Benchmark Comparativo (CUDA vs CPU)** para contrastar el tiempo de inferencia de la GPU vs el procesador.
-3. **Pestaña 3: Evaluación Experimental (Métricas)**: Permite cargar un archivo CSV con etiquetas de referencia (Ground Truth) o ejecutar la demostración guiada para generar la **Matriz de Confusión 6x6**, Accuracy, Precision Macro, Recall Macro y F1-Score.
-4. **Pestaña 4: Ficha Técnica**: Documentación técnica del modelo embebida desde `MODEL_CARD_NOTES.md`.
+### Pestañas de la Aplicación AuraVoice:
+1. **Pestaña 1: Sesión en Vivo**: Dashboard principal AuraVoice con captura y streaming de audio, visualización de ondas espectrales (RMS/Pico dB), tarjeta de **Estado Emocional Latente** (modelo circunflejo Valence/Arousal, desglose de Softmax y métricas acústicas), **AuraTerminal** con telemetría de CPU y GPU en tiempo real, e **Historial de Diarización** (línea temporal de Alex y Dra. Silva).
+2. **Pestaña 2: Historial & Diarización**: Monitoreo de cuota de habla y simulador de turnos conversacionales dinámicos preparado para streaming multi-hablante.
+3. **Pestaña 3: Métricas de Inferencia**: Benchmark comparativo CUDA vs CPU y evaluación supervisada formal (Matriz de Confusión 6x6, Accuracy, Precision, Recall y F1-Score).
+4. **Pestaña 4: Configuración de Modelo**: Ficha técnica, ajuste de ventanas deslizantes, selector de hardware y optimización FP16.
 
 ---
 
@@ -200,7 +200,7 @@ Se abrirá automáticamente en tu navegador en:
 ```text
 sense-ai-emotion-es/
 │
-├── app.py                  # Interfaz web interactiva (Streamlit)
+├── app.py                  # Interfaz web interactiva AuraVoice (Streamlit)
 ├── requirements.txt        # Dependencias oficiales con índice CUDA 12.4
 ├── README.md               # Documentación general y guía de instalación
 ├── MODEL_CARD_NOTES.md     # Ficha técnica académica y funcionamiento de CUDA
@@ -208,10 +208,13 @@ sense-ai-emotion-es/
 │
 ├── src/                    # Módulos modulares del sistema
 │   ├── cuda_monitor.py     # Telemetría de GPU, VRAM y verificación física de tensores
+│   ├── system_telemetry.py # Monitoreo de CPU, hilos y generador de logs AuraTerminal
+│   ├── audio_telemetry.py  # Extracción de ondas visuales, nivel RMS, pico dB y F0
+│   ├── diarization_engine.py# Seguimiento temporal multi-hablante (Alex y Dra. Silva)
 │   ├── audio_processor.py  # Conversión y metadatos de audio (16kHz mono)
 │   ├── model_loader.py     # Definición CustomAudioClassification y carga FP16 en VRAM
 │   ├── inference.py        # Orquestador con sincronización torch.cuda.synchronize()
-│   ├── result_parser.py    # Mapeo y formateo de las 6 emociones en español
+│   ├── result_parser.py    # Modelo circunflejo (Valence/Arousal) y métricas Softmax
 │   └── evaluator.py        # Matriz de confusión y métricas supervisadas (Scikit-Learn)
 │
 ├── tests/                  # Pruebas automatizadas de terminal

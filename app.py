@@ -48,7 +48,7 @@ from src.cuda_monitor import get_cuda_status, verify_model_device
 from src.audio_processor import get_audio_metadata, convert_to_wav_16k_mono, load_audio_array_16k
 from src.result_parser import parse_emotion_probabilities, ETHICAL_DISCLAIMER, EMOTION_COLORS
 from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference
-from src.evaluator import compute_evaluation_metrics, ALL_EMOTIONS
+from src.streaming_ui import render_streaming_tab
 from src.system_telemetry import get_system_cpu_usage, generate_terminal_logs, generate_decision_reasoning_logs
 from src.audio_telemetry import extract_waveform_bars
 
@@ -902,10 +902,10 @@ render_html(navbar_html)
 
 
 # Pestañas principales de la navegación superior
-tab_live, tab_bench, tab_eval, tab_config = st.tabs([
+tab_live, tab_stream, tab_bench, tab_config = st.tabs([
     "Sesión en Vivo (Análisis Emocional)",
+    "Streaming en Tiempo Real (WebSocket)",
     "Benchmark CUDA vs CPU",
-    "Evaluación Supervisada (Matriz de Confusión)",
     "Ficha Técnica & Configuración"
 ])
 
@@ -1469,7 +1469,7 @@ with tab_live:
 
 
 # ==============================================================================
-# PESTAÑA 2: BENCHMARK COMPUTACIONAL (CUDA VS CPU)
+# PESTAÑA 3: BENCHMARK COMPUTACIONAL (CUDA VS CPU)
 # ==============================================================================
 with tab_bench:
     render_html("""
@@ -1561,70 +1561,13 @@ with tab_bench:
 
 
 # ==============================================================================
-# PESTAÑA 3: EVALUACIÓN EXPERIMENTAL (MATRIZ DE CONFUSIÓN 9x9)
+# PESTAÑA 2: STREAMING CONTINUO EN TIEMPO REAL (WEBSOCKET)
 # ==============================================================================
-with tab_eval:
-    render_html("""
-    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
-        <div class="card-title-row">
-            <div class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                Evaluación Supervisada Formal: Matriz de Confusión y Métricas de Clasificación
-            </div>
-            <div class="confidence-pill" style="background:#FFF7ED; color:#EA580C; border-color:#FED7AA;">
-                9 Clases Oficiales (emotion2vec+ Large)
-            </div>
-        </div>
-        <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
-            Evaluación estadística del modelo frente a etiquetas de referencia en español (Ground Truth) 
-            calculando métricas macro de Scikit-Learn: Accuracy, Precision, Recall y F1-Score sobre las 9 emociones del modelo fundacional.
-        </p>
-    </div>
-    """)
-
-    ev_col_act, ev_col_info = st.columns([1.2, 1])
-
-    with ev_col_act:
-        st.markdown("**Control de Validación:**")
-        btn_run_eval = st.button("Ejecutar Validación Supervisada (Matriz 9x9)", type="primary", use_container_width=True)
-
-    with ev_col_info:
-        st.caption("Cálculo formal de métricas estadísticas con etiquetas de referencia (Ground Truth).")
-
-    if btn_run_eval:
-        y_true = [
-            "Alegría", "Alegría", "Alegría",
-            "Tristeza", "Tristeza",
-            "Enojo", "Enojo",
-            "Miedo", "Miedo",
-            "Disgusto",
-            "Neutral", "Neutral",
-            "Sorpresa", "Sorpresa",
-            "Otro", "Neutro / Desc."
-        ]
-        y_pred = [
-            "Alegría", "Alegría", "Neutral",
-            "Tristeza", "Neutral",
-            "Enojo", "Disgusto",
-            "Miedo", "Miedo",
-            "Disgusto",
-            "Neutral", "Tristeza",
-            "Sorpresa", "Neutral",
-            "Otro", "Neutro / Desc."
-        ]
-
-        metrics_res = compute_evaluation_metrics(y_true, y_pred, labels=ALL_EMOTIONS)
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Accuracy Global", f"{metrics_res['accuracy_percent']}%")
-        m2.metric("Precision Macro", f"{metrics_res['precision_macro']}")
-        m3.metric("Recall Macro", f"{metrics_res['recall_macro']}")
-        m4.metric("F1-Score Macro", f"{metrics_res['f1_macro']}")
-
-        cm_matrix = np.array(metrics_res["confusion_matrix"])
-        df_cm = pd.DataFrame(cm_matrix, index=ALL_EMOTIONS, columns=ALL_EMOTIONS)
-        st.markdown("#### Matriz de Confusión 9x9 (Etiqueta Real vs Predicción):")
-        st.dataframe(df_cm, use_container_width=True)
+with tab_stream:
+    try:
+        render_streaming_tab(render_html)
+    except Exception as exc:  # La pestaña de streaming nunca debe tumbar la aplicación
+        st.warning(f"El módulo de streaming no está disponible en este momento: {exc}")
 
 
 # ==============================================================================

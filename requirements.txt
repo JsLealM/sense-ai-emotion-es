@@ -1,7 +1,11 @@
-# PyTorch con aceleración CUDA 12.4
---extra-index-url https://download.pytorch.org/whl/cu124
-torch>=2.4.0
-torchaudio>=2.4.0
+# PyTorch con aceleración CUDA 12.8
+# (cu128 soporta desde Volta/Turing/Ampere hasta Blackwell sm_120, p. ej. RTX 3050 y RTX 50xx)
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0
+torchaudio==2.8.0
+
+# Motor del modelo emotion2vec+ Large (carga e inferencia vía FunASR / Hugging Face Hub)
+funasr>=1.2.0
 
 # Hugging Face Transformers para W2V-BERT Emotion ES
 transformers>=4.40.0
@@ -12,6 +16,9 @@ safetensors>=0.4.0
 soundfile>=0.12.1
 librosa>=0.10.0
 numpy<2.0.0
+
+# Streaming continuo en tiempo real (servidor WebSocket asíncrono)
+websockets>=13.0
 
 # Interfaz gráfica interactiva y evaluación experimental
 streamlit>=1.35.0

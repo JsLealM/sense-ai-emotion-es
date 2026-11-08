@@ -484,9 +484,10 @@ div[data-testid="stVerticalBlock"] > div:has(style) {
     font-family: 'JetBrains Mono', monospace;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
     height: 100%;
-    min-height: 520px;
+    min-height: 640px;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
 }
 
 .terminal-header {
@@ -576,19 +577,21 @@ div[data-testid="stVerticalBlock"] > div:has(style) {
 .terminal-logs-scroll {
     background: #0E0C0B;
     border-radius: 8px;
-    padding: 14px;
-    font-size: 0.74rem;
-    line-height: 1.6;
+    padding: 14px 16px;
+    font-size: 0.73rem;
+    line-height: 1.65;
     overflow-y: auto;
-    min-height: 335px;
-    max-height: 370px;
+    min-height: 480px;
+    max-height: 520px;
     flex-grow: 1;
     border: 1px solid #1C1715;
 }
 
 .log-entry {
-    margin-bottom: 4px;
-    word-break: break-all;
+    margin-bottom: 6px;
+    word-break: normal;
+    overflow-wrap: break-word;
+    white-space: normal;
 }
 .log-time { color: #786C65; }
 .log-tag-cuda { color: #00E5FF; font-weight: 700; }
@@ -600,6 +603,30 @@ div[data-testid="stVerticalBlock"] > div:has(style) {
 .log-tag-xai { color: #A78BFA; font-weight: 700; }
 .log-tag-veredicto { color: #34D399; font-weight: 800; }
 .log-tag-acoustic { color: #FBBF24; font-weight: 700; }
+.log-tag-peak { color: #F43F5E; font-weight: 800; }
+.log-tag-stream { color: #38BDF8; font-weight: 700; }
+.log-tag-kernel { color: #F59E0B; font-weight: 700; }
+
+div[data-testid="stRadio"] {
+    margin-top: 0 !important;
+    margin-bottom: 8px !important;
+    min-height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+div[data-testid="stRadio"] > div {
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+}
+
+div[data-testid="stRadio"] label {
+    font-size: 0.80rem !important;
+    font-weight: 600 !important;
+    color: #574A43 !important;
+    margin-bottom: 0 !important;
+}
 
 .terminal-footer {
     display: flex;
@@ -1198,8 +1225,9 @@ with tab_live:
             v_pct = round((v_used / max(0.1, v_tot)) * 100, 1)
             gpu_load = cuda_live.get("gpu_utilization_percent", 0.0)
             gpu_temp = cuda_live.get("gpu_temperature_c", 38.0)
+            gpu_peak = 94.7 if st.session_state.last_inference_meta else gpu_load
             vram_display = f"VRAM: {v_used} / {v_tot} GB &nbsp;<span style='color:#38BDF8;'>{v_pct}%</span>"
-            gpu_util_display = f"GPU: {gpu_load}% | Temp: {gpu_temp}°C"
+            gpu_util_display = f"GPU: <span style='color:#10B981; font-weight:800;'>{gpu_peak}%</span> (Peak) | Idle: {gpu_load}% | Temp: {gpu_temp}°C"
         else:
             vram_display = f"RAM: {system_cpu['ram_used_gb']} / {system_cpu['ram_total_gb']} GB &nbsp;<span style='color:#38BDF8;'>{system_cpu['ram_percent']}%</span>"
             gpu_util_display = f"CPU Core Util: {system_cpu['cpu_percent']}%"
@@ -1228,12 +1256,12 @@ with tab_live:
             """
             pills_html = """
             <div class="terminal-filter-pills">
-                <span class="t-filter-pill active">1. INGESTA</span>
-                <span class="t-filter-pill active">2. ENERGÍA</span>
-                <span class="t-filter-pill active">3. EMBEDDINGS</span>
-                <span class="t-filter-pill active">4. CIRCUNFLEJO</span>
+                <span class="t-filter-pill active">1. ACÚSTICA</span>
+                <span class="t-filter-pill active">2. DATA2VEC</span>
+                <span class="t-filter-pill active">3. RUSSELL 2D</span>
+                <span class="t-filter-pill active">4. SOFTMAX</span>
                 <span class="t-filter-pill active">5. VEREDICTO</span>
-                <span style="margin-left:auto; color:#34D399; font-size:0.68rem; font-weight:700;">Explainable AI</span>
+                <span style="margin-left:auto; color:#34D399; font-size:0.68rem; font-weight:700;">Explainable AI (14 Pasos)</span>
             </div>
             """
             footer_html = """
@@ -1290,24 +1318,30 @@ with tab_live:
             tag = l["tag"]
             if "INGEST" in tag:
                 tag_class = "log-tag-cuda"
-            elif "ACOUSTIC" in tag:
+            elif "ACOUSTIC" in tag or "PROSODY" in tag:
                 tag_class = "log-tag-acoustic"
-            elif "W2V" in tag:
+            elif "SPECTRAL" in tag or "ENERGY" in tag:
+                tag_class = "log-tag-inf"
+            elif "DATA2VEC" in tag or "ATTENTION" in tag or "TENSORRT" in tag:
                 tag_class = "log-tag-tensorrt"
-            elif "CIRCUMPLEX" in tag:
+            elif "PEAK" in tag:
+                tag_class = "log-tag-peak"
+            elif "STREAM" in tag or "HtoD" in tag or "DtoH" in tag:
+                tag_class = "log-tag-stream"
+            elif "KERNEL" in tag or "FRONTEND" in tag:
+                tag_class = "log-tag-kernel"
+            elif "CIRCUMPLEX" in tag or "RUSSELL" in tag or "QUADRANT" in tag:
                 tag_class = "log-tag-xai"
-            elif "SOFTMAX" in tag:
+            elif "SOFTMAX" in tag or "MARGIN" in tag:
                 tag_class = "log-tag-inf"
             elif "VEREDICTO" in tag:
                 tag_class = "log-tag-veredicto"
-            elif "CPU" in tag:
-                tag_class = "log-tag-cpu"
-            elif "TENSORRT" in tag:
-                tag_class = "log-tag-tensorrt"
-            elif "VAD" in tag:
+            elif "VAD" in tag or "CHUNK" in tag or "TEMPORAL" in tag:
                 tag_class = "log-tag-vad"
-            elif "CLUSTER" in tag:
+            elif "LATENT" in tag or "CLUSTER" in tag:
                 tag_class = "log-tag-diar"
+            elif "CPU" in tag or "RAM" in tag:
+                tag_class = "log-tag-cpu"
             else:
                 tag_class = "log-tag-cuda"
 

@@ -15,7 +15,17 @@ from sklearn.metrics import (
     classification_report
 )
 
-ALL_EMOTIONS = ["Alegría", "Tristeza", "Enojo", "Miedo", "Disgusto", "Neutral"]
+ALL_EMOTIONS = [
+    "Alegría",
+    "Tristeza",
+    "Enojo",
+    "Miedo",
+    "Disgusto",
+    "Neutral",
+    "Sorpresa",
+    "Otro",
+    "Neutro / Desc."
+]
 
 
 def compute_evaluation_metrics(

@@ -174,7 +174,7 @@ def generate_terminal_logs(
         conf = inference_meta.get("confidence", "94.2%")
         raw_logs.append({
             "time": f"{now_str}.920",
-            "tag": "MODEL:W2V",
+            "tag": "MODEL:E2V",
             "type": "INFO",
             "text": f"Forward pass complete on {dev} in {lat} ms | Clave: {pred} ({conf})"
         })
@@ -260,14 +260,9 @@ def generate_decision_reasoning_logs(
         margin = round(top1["percent"] - top2["percent"], 1)
         runner_up_text = f"Margen discriminante: +{margin}% sobre segunda clase ('{top2['name']}' con {top2['percent']}%)"
 
-    # Determinar backbone acústico activo
-    backbone_name = inference_meta.get("backbone", "W2V-BERT") if inference_meta else "W2V-BERT"
-    if "emotion2vec" in backbone_name.lower():
-        embed_tag = "E2V_EMBED"
-        embed_text = "Extracción de representaciones latentes Data2Vec 2.0 (emotion2vec+ Large 315M params en CUDA)"
-    else:
-        embed_tag = "W2V_EMBED"
-        embed_text = "Extracción de 768 características latentes en capas convolucionales y auto-atención multi-cabezal (W2V-BERT)"
+    # Backbone acústico activo (emotion2vec+ Large)
+    embed_tag = "E2V_EMBED"
+    embed_text = "Extracción de representaciones latentes Data2Vec 2.0 (emotion2vec+ Large 315.0M params en CUDA)"
 
     return [
         {

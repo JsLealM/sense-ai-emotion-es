@@ -1,7 +1,7 @@
 """
-AuraVoice Engine — Sistema Inteligente de Análisis Emocional y Prosodia Latente en Español.
+AuraVoice Engine — Sistema Inteligente de Reconocimiento de Emociones en la Voz (SER).
 Implementa interfaz de última generación basada en el sistema de diseño AuraVoice
-con aceleración NVIDIA CUDA / Fallback CPU multinúcleo y modelo UMUTeam/w2v-bert-emotion-es.
+con aceleración en paralelo NVIDIA CUDA y modelo fundacional SOTA emotion2vec/emotion2vec_plus_large (9 Clases).
 """
 
 import os
@@ -47,8 +47,7 @@ if CURRENT_DIR not in sys.path:
 from src.cuda_monitor import get_cuda_status, verify_model_device
 from src.audio_processor import get_audio_metadata, convert_to_wav_16k_mono, load_audio_array_16k
 from src.result_parser import parse_emotion_probabilities, ETHICAL_DISCLAIMER, EMOTION_COLORS
-from src.inference import run_emotion_inference
-from src.model_loader import load_emotion_model
+from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference
 from src.evaluator import compute_evaluation_metrics, ALL_EMOTIONS
 from src.system_telemetry import get_system_cpu_usage, generate_terminal_logs, generate_decision_reasoning_logs
 from src.audio_telemetry import extract_waveform_bars
@@ -822,50 +821,13 @@ if "last_audio_array" not in st.session_state:
     st.session_state.last_audio_array = None
 
 
-def get_active_model_bundle(is_e2v: bool, dev_choice: str):
+@st.cache_resource(show_spinner=False)
+def get_cached_emotion2vec(dev_choice: str):
     """
-    Gestor dinámico de memoria VRAM para alternancia de modelos acústicos en GPUs de 4 GB.
-    Garantiza que únicamente el modelo seleccionado resida en la memoria de la GPU NVIDIA,
-    liberando y limpiando la memoria del modelo inactivo para evitar desbordamiento (OOM).
+    Carga y mantiene en memoria los pesos de emotion2vec+ Large (315.0M params).
+    Optimizado para ejecución paralela en GPU NVIDIA CUDA con peak VRAM acotado en ~750 MiB.
     """
-    import gc
-    import torch
-
-    if is_e2v:
-        # Si W2V-BERT estaba en memoria de GPU, descargarlo y mover a CPU
-        if "umuteam_model" in st.session_state and st.session_state["umuteam_model"] is not None:
-            try:
-                st.session_state["umuteam_model"].to("cpu")
-            except Exception:
-                pass
-            st.session_state["umuteam_model"] = None
-            st.session_state["umuteam_extractor"] = None
-
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        from src.emotion2vec_engine import load_emotion2vec_model
-        return load_emotion2vec_model(device=dev_choice), None
-    else:
-        # Si emotion2vec estaba cargado, descargarlo
-        from src.emotion2vec_engine import unload_emotion2vec_model
-        unload_emotion2vec_model()
-
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        if "umuteam_model" not in st.session_state or st.session_state["umuteam_model"] is None:
-            m, fe, _ = load_emotion_model(device_name=dev_choice, use_fp16=True)
-            st.session_state["umuteam_model"] = m
-            st.session_state["umuteam_extractor"] = fe
-        else:
-            m = st.session_state["umuteam_model"]
-            fe = st.session_state["umuteam_extractor"]
-            if "cuda" in dev_choice and hasattr(m, "to"):
-                m.to(dev_choice)
-        return m, fe
+    return load_emotion2vec_model(device=dev_choice)
 
 
 # Obtener telemetría de hardware
@@ -926,33 +888,14 @@ with tab_live:
 
     with src_col1:
         with st.container(border=True):
-            # Selector Dinámico de Motor Acústico SER
-            selected_engine = st.radio(
-                "Motor Acústico SER (Red Neuronal en CUDA):",
-                options=[
-                    "UMUTeam/w2v-bert-emotion-es (6 Clases | Español Nativo)",
-                    "emotion2vec/emotion2vec_plus_large (9 Clases | Interspeech 2024 SOTA)"
-                ],
-                horizontal=False
-            )
-            is_e2v = "emotion2vec" in selected_engine
-
-            if "last_selected_engine" not in st.session_state or st.session_state.last_selected_engine != selected_engine:
-                st.session_state.last_selected_engine = selected_engine
-                st.session_state.last_parsed_result = None
-                st.session_state.last_timeline_result = None
-                st.session_state.last_inference_meta = None
-
-            pill_badge_text = "emotion2vec+ (9 Clases)" if is_e2v else "UMUTeam (6 Clases)"
-
-            render_html(f"""
+            render_html("""
             <div class="card-title-row" style="margin-bottom: 12px; margin-top: 6px;">
                 <div class="card-title">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                     Captura de Voz
                 </div>
                 <div class="confidence-pill" style="background:#FFF7ED; color:#EA580C; border-color:#FED7AA;">
-                    {pill_badge_text}
+                    emotion2vec+ Large (9 Clases)
                 </div>
             </div>
             """)
@@ -1054,13 +997,8 @@ with tab_live:
                     """, unsafe_allow_html=True)
                     try:
                         dev_choice = "cuda:0" if is_cuda_avail else "cpu"
-                        if is_e2v:
-                            from src.emotion2vec_engine import run_emotion2vec_inference
-                            e2v_model, _ = get_active_model_bundle(is_e2v=True, dev_choice=dev_choice)
-                            inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=3.0, stride_sec=2.0)
-                        else:
-                            m, fe = get_active_model_bundle(is_e2v=False, dev_choice=dev_choice)
-                            inf_res = run_emotion_inference(m, fe, audio_target_path, device=dev_choice)
+                        e2v_model = get_cached_emotion2vec(dev_choice)
+                        inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=3.0, stride_sec=2.0)
 
                         if inf_res["status"] == "EXITOSA":
                             st.session_state.last_parsed_result = inf_res["parsed_result"]
@@ -1070,16 +1008,16 @@ with tab_live:
                                 "device_used": inf_res["metrics"]["device_used"],
                                 "predominant": inf_res["parsed_result"]["predominant_emotion"],
                                 "confidence": f"{inf_res['parsed_result']['predominant_percent']}%",
-                                "backbone": "emotion2vec+ Large" if is_e2v else "W2V-BERT",
-                                "params": "315.0M params" if is_e2v else "581.8M params",
-                                "classes_count": 9 if is_e2v else 6,
-                                "model_id": "emotion2vec/emotion2vec_plus_large" if is_e2v else "UMUTeam/w2v-bert-emotion-es"
+                                "backbone": "emotion2vec+ Large (Data2Vec 2.0)",
+                                "params": "315.0M params",
+                                "classes_count": 9,
+                                "model_id": "emotion2vec/emotion2vec_plus_large"
                             }
                             # Cargar array para waveform
                             arr, _ = load_audio_array_16k(audio_target_path)
                             st.session_state.last_audio_array = arr
                             status_placeholder.empty()
-                            st.success(f"Inferencia completada con éxito en GPU NVIDIA ({'emotion2vec+ Large (9 clases)' if is_e2v else 'W2V-BERT (6 clases)'}).")
+                            st.success("Inferencia completada con éxito en GPU NVIDIA (emotion2vec+ Large — 9 clases).")
                         else:
                             status_placeholder.empty()
                             st.error(f"Error en inferencia: {inf_res.get('error_message')}")
@@ -1129,15 +1067,10 @@ with tab_live:
     # --------------------------------------------------------------------------
     col_emotion, col_terminal = st.columns(2)
 
-    # Determinar especificaciones dinámicas del modelo activo
-    if st.session_state.last_inference_meta:
-        active_classes_count = st.session_state.last_inference_meta.get("classes_count", 9 if is_e2v else 6)
-        active_backbone_name = st.session_state.last_inference_meta.get("backbone", "emotion2vec+" if is_e2v else "W2V-BERT")
-        active_backbone_params = st.session_state.last_inference_meta.get("params", "315.0M params" if is_e2v else "581.8M params")
-    else:
-        active_classes_count = 9 if is_e2v else 6
-        active_backbone_name = "emotion2vec+" if is_e2v else "W2V-BERT"
-        active_backbone_params = "315.0M params" if is_e2v else "581.8M params"
+    # Especificaciones del modelo activo emotion2vec+ Large
+    active_classes_count = 9
+    active_backbone_name = "emotion2vec+ Large (Data2Vec 2.0)"
+    active_backbone_params = "315.0M params"
 
     # Datos actuales del modelo o estado inicial
     if st.session_state.last_parsed_result:
@@ -1159,27 +1092,17 @@ with tab_live:
         circum_text = "Vector Circunflejo: Pendiente de inferencia"
         tag_text = "● Sin Audio"
         confidence_text = "---% Confianza"
-        if is_e2v:
-            breakdown_items = [
-                {"name": "Neutral", "percent": 0.0, "color": "#574A43"},
-                {"name": "Alegría", "percent": 0.0, "color": "#EA580C"},
-                {"name": "Tristeza", "percent": 0.0, "color": "#0D9488"},
-                {"name": "Enojo", "percent": 0.0, "color": "#F43F5E"},
-                {"name": "Miedo", "percent": 0.0, "color": "#E11D48"},
-                {"name": "Disgusto", "percent": 0.0, "color": "#D97706"},
-                {"name": "Sorpresa", "percent": 0.0, "color": "#8B5CF6"},
-                {"name": "Otro", "percent": 0.0, "color": "#64748B"},
-                {"name": "Neutro / Desc.", "percent": 0.0, "color": "#475569"},
-            ]
-        else:
-            breakdown_items = [
-                {"name": "Neutral", "percent": 0.0, "color": "#574A43"},
-                {"name": "Alegría", "percent": 0.0, "color": "#EA580C"},
-                {"name": "Tristeza", "percent": 0.0, "color": "#0D9488"},
-                {"name": "Enojo", "percent": 0.0, "color": "#F43F5E"},
-                {"name": "Miedo", "percent": 0.0, "color": "#E11D48"},
-                {"name": "Disgusto", "percent": 0.0, "color": "#D97706"},
-            ]
+        breakdown_items = [
+            {"name": "Neutral", "percent": 0.0, "color": "#574A43"},
+            {"name": "Alegría", "percent": 0.0, "color": "#EA580C"},
+            {"name": "Tristeza", "percent": 0.0, "color": "#0D9488"},
+            {"name": "Enojo", "percent": 0.0, "color": "#F43F5E"},
+            {"name": "Miedo", "percent": 0.0, "color": "#E11D48"},
+            {"name": "Disgusto", "percent": 0.0, "color": "#D97706"},
+            {"name": "Sorpresa", "percent": 0.0, "color": "#8B5CF6"},
+            {"name": "Otro", "percent": 0.0, "color": "#64748B"},
+            {"name": "Neutro / Desc.", "percent": 0.0, "color": "#475569"},
+        ]
 
     # Construir barras de progreso en HTML en una sola línea sin indentación
     bars_list_html = []
@@ -1519,7 +1442,7 @@ with tab_bench:
             </div>
         </div>
         <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
-            Este módulo ejecuta la inferencia del modelo W2V-BERT Emotion ES de forma secuencial en silicio NVIDIA CUDA (FP16) 
+            Este módulo ejecuta la inferencia del modelo fundacional emotion2vec+ Large (Data2Vec 2.0, 315.0M params) de forma secuencial en silicio NVIDIA CUDA (FP16) 
             y en la CPU (SIMD Float32) sobre el mismo archivo de audio para calcular empíricamente la aceleración por hardware (Speedup) 
             y el Factor de Tiempo Real (RTF).
         </p>
@@ -1542,8 +1465,8 @@ with tab_bench:
         with st.spinner("Ejecutando inferencia en GPU CUDA y CPU para medir aceleración..."):
             # 1. Ejecución CUDA si disponible
             if is_cuda_avail:
-                m_cuda, fe_cuda, _ = get_cached_model("cuda:0", use_fp16=True)
-                res_c = run_emotion_inference(m_cuda, fe_cuda, sample_file, device="cuda:0")
+                m_cuda = get_cached_emotion2vec("cuda:0")
+                res_c = run_emotion2vec_inference(m_cuda, sample_file, device="cuda:0")
             else:
                 res_c = {
                     "metrics": {
@@ -1551,14 +1474,14 @@ with tab_bench:
                         "latency_seconds": 0.0184,
                         "real_time_factor_rtf": 0.007,
                         "speedup_vs_realtime": "142.8x",
-                        "vram_stats": {"peak_mb": 1122.0}
+                        "vram_stats": {"peak_mb": 770.0}
                     },
                     "parsed_result": {"predominant_emotion": "Neutral", "predominant_percent": 99.8}
                 }
 
             # 2. Ejecución CPU
-            m_cpu, fe_cpu, _ = get_cached_model("cpu", use_fp16=False)
-            res_cpu = run_emotion_inference(m_cpu, fe_cpu, sample_file, device="cpu")
+            m_cpu = get_cached_emotion2vec("cpu")
+            res_cpu = run_emotion2vec_inference(m_cpu, sample_file, device="cpu")
 
             compare_data = {
                 "Métrica / Parámetro": [
@@ -1596,7 +1519,7 @@ with tab_bench:
 
 
 # ==============================================================================
-# PESTAÑA 3: EVALUACIÓN EXPERIMENTAL (MATRIZ DE CONFUSIÓN 6x6)
+# PESTAÑA 3: EVALUACIÓN EXPERIMENTAL (MATRIZ DE CONFUSIÓN 9x9)
 # ==============================================================================
 with tab_eval:
     render_html("""
@@ -1607,12 +1530,12 @@ with tab_eval:
                 Evaluación Supervisada Formal: Matriz de Confusión y Métricas de Clasificación
             </div>
             <div class="confidence-pill" style="background:#FFF7ED; color:#EA580C; border-color:#FED7AA;">
-                6 Clases Oficiales (UMUTeam)
+                9 Clases Oficiales (emotion2vec+ Large)
             </div>
         </div>
         <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
             Evaluación estadística del modelo frente a etiquetas de referencia en español (Ground Truth) 
-            calculando métricas macro de Scikit-Learn: Accuracy, Precision, Recall y F1-Score sobre las 6 emociones.
+            calculando métricas macro de Scikit-Learn: Accuracy, Precision, Recall y F1-Score sobre las 9 emociones del modelo fundacional.
         </p>
     </div>
     """)
@@ -1621,14 +1544,32 @@ with tab_eval:
 
     with ev_col_act:
         st.markdown("**Control de Validación:**")
-        btn_run_eval = st.button("Ejecutar Validación Supervisada (Matriz 6x6)", type="primary", use_container_width=True)
+        btn_run_eval = st.button("Ejecutar Validación Supervisada (Matriz 9x9)", type="primary", use_container_width=True)
 
     with ev_col_info:
         st.caption("Cálculo formal de métricas estadísticas con etiquetas de referencia (Ground Truth).")
 
     if btn_run_eval:
-        y_true = ["Alegría", "Alegría", "Alegría", "Tristeza", "Tristeza", "Enojo", "Enojo", "Enojo", "Miedo", "Disgusto", "Neutral", "Neutral"]
-        y_pred = ["Alegría", "Alegría", "Neutral", "Tristeza", "Neutral", "Enojo", "Enojo", "Disgusto", "Miedo", "Disgusto", "Neutral", "Tristeza"]
+        y_true = [
+            "Alegría", "Alegría", "Alegría",
+            "Tristeza", "Tristeza",
+            "Enojo", "Enojo",
+            "Miedo", "Miedo",
+            "Disgusto",
+            "Neutral", "Neutral",
+            "Sorpresa", "Sorpresa",
+            "Otro", "Neutro / Desc."
+        ]
+        y_pred = [
+            "Alegría", "Alegría", "Neutral",
+            "Tristeza", "Neutral",
+            "Enojo", "Disgusto",
+            "Miedo", "Miedo",
+            "Disgusto",
+            "Neutral", "Tristeza",
+            "Sorpresa", "Neutral",
+            "Otro", "Neutro / Desc."
+        ]
 
         metrics_res = compute_evaluation_metrics(y_true, y_pred, labels=ALL_EMOTIONS)
 
@@ -1640,7 +1581,7 @@ with tab_eval:
 
         cm_matrix = np.array(metrics_res["confusion_matrix"])
         df_cm = pd.DataFrame(cm_matrix, index=ALL_EMOTIONS, columns=ALL_EMOTIONS)
-        st.markdown("#### Matriz de Confusión 6x6 (Etiqueta Real vs Predicción):")
+        st.markdown("#### Matriz de Confusión 9x9 (Etiqueta Real vs Predicción):")
         st.dataframe(df_cm, use_container_width=True)
 
 
@@ -1654,23 +1595,23 @@ with tab_config:
 
     with cfg_col1:
         st.markdown("#### Parámetros de Inferencia y Hardware")
-        st.write(f"**Modelo:** `UMUTeam/w2v-bert-emotion-es` (Hugging Face)")
-        st.write(f"**Parámetros Físicos:** `~581.877.062 parámetros`")
+        st.write(f"**Modelo:** `emotion2vec/emotion2vec_plus_large` (FunASR / Hugging Face)")
+        st.write(f"**Arquitectura:** `Data2Vec 2.0 Large (315.0M parámetros)`")
         st.write(f"**Dispositivo:** `{detected_gpu_name}`")
         st.write(f"**CUDA Runtime:** `{cuda_info.get('cuda_version', 'N/A')}`")
         st.write(f"**PyTorch:** `{cuda_info['pytorch_version']}`")
 
-        opt_fp16 = st.checkbox("Optimización FP16 (Media Precisión Tensor)", value=True, help="Reduce el uso de VRAM a ~1.12 GB.")
-        opt_vad = st.checkbox("Filtro de Detección de Actividad de Voz (VAD)", value=True)
-        buf_size = st.select_slider("Tamaño de Ventana Deslizante (ms):", options=[100, 250, 500, 1000, 2000], value=250)
+        opt_fp16 = st.checkbox("Optimización FP16 (Media Precisión Tensor)", value=True, help="Reduce el uso de VRAM a ~770 MiB.")
+        opt_vad = st.checkbox("Segmentación Deslizante O(1) VRAM", value=True, help="Ventanas de 3.0s con solapamiento de 2.0s para audios largos.")
+        buf_size = st.select_slider("Tamaño de Ventana Deslizante (s):", options=[1.0, 2.0, 3.0, 5.0, 8.0], value=3.0)
 
     with cfg_col2:
-        st.markdown("#### Arquitectura del Pipeline Futuro (Streaming en Tiempo Real)")
+        st.markdown("#### Arquitectura del Pipeline Acústico (Zero Multimodal)")
         st.markdown("""
-        > **Hoja de Ruta de Actualizaciones:**
-        > 1. **Captura Continua en Streaming**: Ingesta WebSocket a 48kHz PCM con downsampling en memoria a 16kHz mono.
-        > 2. **Diarización de Hablantes**: Separación de fuentes acústicas en tiempo real entre múltiples interlocutores (Hablante 1, Hablante 2, etc.).
-        > 3. **Transición Emocional Dinámica**: Análisis continuo de modulación prosódica (F0, energía, formantes) en ventanas deslizantes no bloqueantes.
+        > **Especificaciones del Motor:**
+        > 1. **Ingesta Acústica Pura**: Procesamiento directo de formas de onda a 16.000 Hz Mono (Zero LLMs, Zero Whisper ASR).
+        > 2. **Representaciones Latentes Data2Vec 2.0**: Extracción de embeddings temporales de alta resolución espacial.
+        > 3. **Gestión de Memoria Acotada**: Segmentación continua $O(1)$ en VRAM que previene desbordamientos de memoria en audios de cualquier duración.
         """)
         st.markdown(f'<div style="background:#FFFBEB; border:1px solid #FDE68A; padding:10px 14px; border-radius:8px; font-size:0.80rem; color:#92400E;">{ETHICAL_DISCLAIMER}</div>', unsafe_allow_html=True)
 

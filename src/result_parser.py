@@ -1,7 +1,7 @@
 """
 Módulo de Parseo e Interpretación de Resultados Emocionales.
-Modela y traduce las 6 categorías de UMUTeam/w2v-bert-emotion-es:
-Alegría, Tristeza, Enojo, Miedo, Disgusto y Neutral.
+Modela y traduce las 9 categorías oficiales de emotion2vec/emotion2vec_plus_large (Interspeech 2024):
+Alegría, Tristeza, Enojo, Miedo, Disgusto, Neutral, Sorpresa, Otro y Neutro / Desc.
 Incorpora el Modelo Circunflejo de Russell (Valence & Arousal) y descriptores latentes.
 """
 
@@ -9,23 +9,22 @@ from typing import Dict, Any, List, Tuple
 import torch
 
 EMOTION_TRANSLATION = {
-    # Clases canónicas UMUTeam (6 clases)
-    "anger": "Enojo",
-    "disgust": "Disgusto",
-    "fear": "Miedo",
-    "joy": "Alegría",
-    "neutral": "Neutral",
-    "sadness": "Tristeza",
-    # Clases emotion2vec+ (9 clases)
+    # Clases oficiales de emotion2vec+ (9 clases)
     "angry": "Enojo",
     "disgusted": "Disgusto",
     "fearful": "Miedo",
     "happy": "Alegría",
+    "neutral": "Neutral",
     "other": "Otro",
     "sad": "Tristeza",
     "surprised": "Sorpresa",
     "unknown": "Neutro / Desc.",
-    # Variantes en mayúsculas / español
+    # Variantes estándar
+    "anger": "Enojo",
+    "disgust": "Disgusto",
+    "fear": "Miedo",
+    "joy": "Alegría",
+    "sadness": "Tristeza",
     "alegría": "Alegría",
     "tristeza": "Tristeza",
     "enojo": "Enojo",
@@ -170,7 +169,7 @@ def parse_emotion_probabilities(
     # Calcular vector circunflejo Valence/Arousal
     circumplex = compute_circumplex_state(emotion_scores)
 
-    # Desglose de clases dinámicas (6 clases UMUTeam o 9 clases emotion2vec)
+    # Desglose canónico de las 9 clases de emotion2vec
     class_mapping = {
         "Alegría": "Alegría",
         "Neutral": "Neutral",

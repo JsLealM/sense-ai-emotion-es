@@ -117,6 +117,9 @@ sense-ai-emotion-es/
 |   |-- evaluator.py            # Metricas supervisadas (Accuracy, F1, Matriz 9x9)
 |   |-- diarization_engine.py   # Motor de diarizacion acustica
 |
+|-- scripts/                    # Scripts de soporte y puesta en marcha
+|   `-- download_model.py       # Descarga y precarga de pesos para nuevos entornos (WSL)
+|
 |-- tests/                      # Banco de pruebas de terminal
 |   |-- test_cuda.py            # Test de estres tensorial y sincronizacion CUDA
 |   |-- test_inference.py       # Test de inferencia real de emotion2vec+ Large
@@ -153,7 +156,10 @@ source .venv/bin/activate       # Linux / WSL2 / macOS
 # 4. Instalar dependencias con soporte CUDA 12.4
 uv pip install -r requirements.txt
 
-# 5. Ejecutar la aplicacion web
+# 5. Precargar y verificar los pesos del modelo (Solo la primera vez en un equipo nuevo / WSL)
+python scripts/download_model.py
+
+# 6. Ejecutar la aplicacion web
 streamlit run app.py
 ```
 

@@ -1386,11 +1386,11 @@ with tab_live:
         '<div class="legend-item"><div class="legend-color-dot" style="background:#0D9488;"></div>Tristeza</div>',
         '<div class="legend-item"><div class="legend-color-dot" style="background:#F43F5E;"></div>Enojo</div>',
         '<div class="legend-item"><div class="legend-color-dot" style="background:#E11D48;"></div>Miedo</div>',
-        '<div class="legend-item"><div class="legend-color-dot" style="background:#D97706;"></div>Disgusto</div>'
+        '<div class="legend-item"><div class="legend-color-dot" style="background:#D97706;"></div>Disgusto</div>',
+        '<div class="legend-item"><div class="legend-color-dot" style="background:#8B5CF6;"></div>Sorpresa</div>',
+        '<div class="legend-item"><div class="legend-color-dot" style="background:#64748B;"></div>Otro</div>',
+        '<div class="legend-item"><div class="legend-color-dot" style="background:#475569;"></div>Neutro / Desc.</div>'
     ]
-    if is_e2v:
-        legend_items_list.append('<div class="legend-item"><div class="legend-color-dot" style="background:#8B5CF6;"></div>Sorpresa</div>')
-        legend_items_list.append('<div class="legend-item"><div class="legend-color-dot" style="background:#64748B;"></div>Otro</div>')
     legend_items_html = "".join(legend_items_list)
 
     timeline_card_html = f"""

@@ -66,11 +66,35 @@ def unload_emotion2vec_model():
         torch.cuda.empty_cache()
 
 
+def find_local_emotion2vec_snapshot() -> Optional[str]:
+    """
+    Busca si los pesos del modelo ya existen en la caché local de Hugging Face.
+    Retorna la ruta absoluta al snapshot si contiene 'model.pt', de lo contrario None.
+    """
+    hub_cache_dir = os.path.expanduser(
+        "~/.cache/huggingface/hub/models--emotion2vec--emotion2vec_plus_large/snapshots"
+    )
+    if os.path.isdir(hub_cache_dir):
+        snapshots = [
+            os.path.join(hub_cache_dir, s)
+            for s in os.listdir(hub_cache_dir)
+            if os.path.isdir(os.path.join(hub_cache_dir, s))
+        ]
+        if snapshots:
+            snapshots.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            for snap in snapshots:
+                if os.path.isfile(os.path.join(snap, "model.pt")):
+                    return snap
+    return None
+
+
 def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     """
     Carga el modelo emotion2vec/emotion2vec_plus_large usando FunASR.
-    Prioriza la copia local en disco (~/.cache/huggingface/hub/...) para ejecución
-    100% offline y libre de llamadas HTTP a servidores remotos.
+    Si el modelo ya fue descargado previamente, lo carga 100% offline desde la caché
+    local en disco, silenciando advertencias de inicialización.
+    Si se ejecuta por primera vez en una máquina nueva (ej. WSL de un compañero),
+    descarga automáticamente los pesos desde Hugging Face mostrando el progreso.
     """
     cache_key = f"emotion2vec_plus_large_{device}"
     if cache_key in _E2V_CACHE:
@@ -81,19 +105,32 @@ def load_emotion2vec_model(device: str = "cuda:0") -> Any:
     # Si se pide CUDA pero no está disponible, caer a CPU
     actual_device = device if ("cuda" in device and torch.cuda.is_available()) else "cpu"
 
-    # Verificar si el snapshot local ya existe en disco para carga 100% offline sin peticiones HTTP
-    local_snapshot = os.path.expanduser(
-        "~/.cache/huggingface/hub/models--emotion2vec--emotion2vec_plus_large/snapshots/6c303ba987b86b93193de93e34bb2b077a6bedc4"
-    )
-    model_source = local_snapshot if os.path.isdir(local_snapshot) else "emotion2vec/emotion2vec_plus_large"
+    local_snapshot = find_local_emotion2vec_snapshot()
 
-    with silence_stdio():
+    if local_snapshot:
+        # Carga rápida y 100% offline desde el disco local
+        with silence_stdio():
+            model = AutoModel(
+                model=local_snapshot,
+                hub="hf",
+                device=actual_device,
+                disable_update=True
+            )
+    else:
+        # Primera descarga en una máquina nueva (ej. WSL de un compañero)
+        print("\n" + "=" * 70)
+        print(" [AuraVoice Engine] Primera ejecución detectada en este equipo / WSL.")
+        print(" Descargando pesos de emotion2vec/emotion2vec_plus_large desde Hugging Face (~1.2 GB)...")
+        print(" Esta descarga se realiza UNA SOLA VEZ y queda cacheada permanentemente en disco.")
+        print("=" * 70 + "\n")
         model = AutoModel(
-            model=model_source,
+            model="emotion2vec/emotion2vec_plus_large",
             hub="hf",
             device=actual_device,
-            disable_update=True
+            disable_update=False
         )
+        print("\n[AuraVoice Engine] Descarga completada con éxito. Ejecución lista.\n")
+
     _E2V_CACHE[cache_key] = model
     return model
 

@@ -107,7 +107,10 @@ def generate_terminal_logs(
 
     cuda_telemetry = get_cuda_status() if is_cuda else {}
     vram_used = cuda_telemetry.get("vram_reserved_mb", 770.0)
-    dev_name = cuda_telemetry.get("device_name", "NVIDIA GeForce RTX 3050 Laptop GPU")
+    dev_name = cuda_telemetry.get("device_name", "GPU NVIDIA")
+    dev_count = cuda_telemetry.get("device_count", 1)
+    dev_idx = cuda_telemetry.get("current_device", 0)
+    cuda_ver = cuda_telemetry.get("cuda_version", "12.4")
 
     gpu_load = cuda_telemetry.get("gpu_utilization_percent", 0.0)
     gpu_temp = cuda_telemetry.get("gpu_temperature_c", 38.0)
@@ -124,7 +127,7 @@ def generate_terminal_logs(
                     "time": f"{now_str}.102",
                     "tag": "CUDA:STREAM",
                     "type": "CUDA",
-                    "text": f"NVIDIA RTX 3050 initialized | CUDA Stream #1 ready | VRAM Base: {vram_used} MiB | GPU Load: 3.5% | Temp: {gpu_temp}°C"
+                    "text": f"{dev_name} [ID {dev_idx}] initialized | CUDA Stream #{dev_idx} ready | VRAM Base: {vram_used} MiB | GPU Load: 3.5% | Temp: {gpu_temp}°C"
                 },
                 {
                     "time": f"{now_str}.115",
@@ -136,7 +139,7 @@ def generate_terminal_logs(
                     "time": f"{now_str}.128",
                     "tag": "CUDA:KERNEL",
                     "type": "CUDA",
-                    "text": "Frontend Conv1D (7 capas convolucionales locales) desplegado en 2048 núcleos CUDA | GPU Load: 54.8%"
+                    "text": f"Frontend Conv1D (7 capas convolucionales locales) desplegado en núcleos de {dev_name} | GPU Load: 54.8%"
                 },
                 {
                     "time": f"{now_str}.142",
@@ -155,6 +158,12 @@ def generate_terminal_logs(
                     "tag": "CUDA:PEAK",
                     "type": "CUDA",
                     "text": "Capas Transformer 13-24: Procesamiento profundo de atención contextual | GPU Load: 94.7% (PEAK LOAD) | VRAM: 768.0 MiB"
+                },
+                {
+                    "time": f"{now_str}.198",
+                    "tag": "CUDA:CURVA",
+                    "type": "CUDA",
+                    "text": "Trayectoria de Carga GPU: [0% ──> 18% ──> 55% ──> 88% ──> 94.7% (PICO) ──> 79% ──> 24% ──> 0% IDLE]"
                 },
                 {
                     "time": f"{now_str}.210",
@@ -199,6 +208,13 @@ def generate_terminal_logs(
                     "text": f"Inferencia completada en {dev_used} en {lat_disp} ms | Veredicto: {pred_disp} ({conf_disp}) | Speedup: ~12.8x vs CPU"
                 }
             ]
+            if dev_count > 1:
+                raw_logs.insert(1, {
+                    "time": f"{now_str}.108",
+                    "tag": "CUDA:MULTI",
+                    "type": "CUDA",
+                    "text": f"Múltiples GPUs detectadas: {dev_count} dispositivos disponibles. Dispositivo activo seleccionado: ID {dev_idx} ({dev_name})"
+                })
         else:
             raw_logs = [
                 {
@@ -246,13 +262,13 @@ def generate_terminal_logs(
                     "time": f"{now_str}.010",
                     "tag": "CUDA:INIT",
                     "type": "CUDA",
-                    "text": f"NVIDIA GeForce RTX 3050 Laptop GPU detectada y lista | Driver 535+ | CUDA 12.4"
+                    "text": f"{dev_name} [ID {dev_idx}] detectada y lista | CUDA {cuda_ver} | VRAM Total: {cuda_telemetry.get('vram_total_mb', 0)} MB"
                 },
                 {
                     "time": f"{now_str}.025",
                     "tag": "CUDA:STREAM",
                     "type": "CUDA",
-                    "text": f"Stream #1 activo | Asignador PyTorch CUDA (expandable_segments=True) | VRAM: {vram_used} MiB"
+                    "text": f"Stream #{dev_idx} activo | Asignador PyTorch CUDA (expandable_segments=True) | VRAM Base: {vram_used} MiB"
                 },
                 {
                     "time": f"{now_str}.045",
@@ -273,6 +289,13 @@ def generate_terminal_logs(
                     "text": "Presiona 'Ejecutar Inferencia de Emoción en Audio' para monitorear el ascenso de carga en GPU."
                 }
             ]
+            if dev_count > 1:
+                raw_logs.insert(1, {
+                    "time": f"{now_str}.018",
+                    "tag": "CUDA:MULTI",
+                    "type": "CUDA",
+                    "text": f"Múltiples GPUs detectadas: {dev_count} dispositivos en el sistema. Dispositivo predeterminado: ID {dev_idx} ({dev_name})"
+                })
         else:
             raw_logs = [
                 {

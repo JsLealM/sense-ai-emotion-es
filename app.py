@@ -861,7 +861,15 @@ def get_cached_emotion2vec(dev_choice: str):
 cuda_info = get_cuda_status()
 is_cuda_avail = cuda_info["is_available"]
 system_cpu = get_system_cpu_usage()
-detected_gpu_name = cuda_info.get("device_name", "NVIDIA GeForce RTX 3050 Laptop GPU" if is_cuda_avail else "CPU Multi-Core")
+detected_gpu_name = cuda_info.get("device_name", "NVIDIA GPU" if is_cuda_avail else "CPU Multi-Core")
+clean_gpu_name = (
+    detected_gpu_name.replace("NVIDIA GeForce ", "")
+    .replace(" Laptop GPU", "")
+    .replace(" GPU", "")
+    .strip()
+    if is_cuda_avail
+    else f"{system_cpu['cpu_count']} Cores SIMD"
+)
 
 
 # ==============================================================================
@@ -869,7 +877,7 @@ detected_gpu_name = cuda_info.get("device_name", "NVIDIA GeForce RTX 3050 Laptop
 # ==============================================================================
 cuda_pill_class = "cuda-active" if is_cuda_avail else ""
 cuda_pill_text = (
-    f"• CUDA Stream Active: Device 0 [{detected_gpu_name}]"
+    f"• CUDA Stream Active: Device {cuda_info.get('current_device', 0)} [{detected_gpu_name}]"
     if is_cuda_avail
     else f"• High-Performance CPU Engine: {system_cpu['cpu_count']} Cores Active"
 )
@@ -1198,7 +1206,7 @@ with tab_live:
                 <div class="spec-box">
                     <div class="spec-label">Dispositivo</div>
                     <div class="spec-value">{'cuda:0' if is_cuda_avail else 'CPU'}</div>
-                    <div class="spec-sub">NVIDIA RTX 3050</div>
+                    <div class="spec-sub">{clean_gpu_name}</div>
                 </div>
             </div>
         </div>
@@ -1276,8 +1284,8 @@ with tab_live:
                 audio_telemetry_meta=waveform_data
             )
         else:
-            t_title = "AuraTerminal CUDA v12.4"
-            t_badge = f"Device: 0 [{'RTX 3050' if is_cuda_avail else 'CPU'}]"
+            t_title = "AuraTerminal CUDA v12.4" if is_cuda_avail else "AuraTerminal CPU Multi-Core"
+            t_badge = f"Device: {cuda_info.get('current_device', 0)} [{clean_gpu_name}]" if is_cuda_avail else f"Host [{system_cpu['cpu_count']} Cores SIMD]"
             strip_html = f"""
             <div class="terminal-stats-strip">
                 <div class="t-stat-item">
@@ -1472,7 +1480,7 @@ with tab_bench:
                 Benchmark de Rendimiento Computacional: GPU NVIDIA vs Procesador Central
             </div>
             <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0;">
-                Hardware: NVIDIA GeForce RTX 3050 Laptop GPU
+                Hardware: {detected_gpu_name}
             </div>
         </div>
         <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">

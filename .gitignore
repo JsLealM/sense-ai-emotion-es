@@ -24,6 +24,8 @@ models/
 *.tmp
 *.temp
 /tmp/
+WhatsApp*
+*.ogg
 
 # Streamlit
 .streamlit/secrets.toml

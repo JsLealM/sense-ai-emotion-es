@@ -114,7 +114,9 @@ sense-ai-emotion-es/
 |   |-- audio_telemetry.py      # Extraccion de RMS, pico dB y Mel-Bands
 |   |-- audio_processor.py      # Conversion de formatos y normalizacion 16kHz
 |   |-- result_parser.py        # Modelo circunflejo de Russell 2D y 9 clases
-|   |-- evaluator.py            # Metricas supervisadas (Accuracy, F1, Matriz 9x9)
+|   |-- evaluator.py            # Metricas supervisadas (Accuracy, F1, Matriz 9x9) - sin uso en la UI
+|   |-- websocket_server.py     # Servidor WebSocket asincrono de streaming continuo (ventana 3 s / paso 1 s)
+|   |-- streaming_ui.py         # Pestana de streaming: cliente JS (AudioWorklet + WebSocket) y panel en vivo
 |   |-- diarization_engine.py   # Motor de diarizacion acustica
 |
 |-- scripts/                    # Scripts de soporte y puesta en marcha
@@ -164,6 +166,32 @@ streamlit run app.py
 ```
 
 La interfaz queda accesible en `http://localhost:8501`.
+
+### Streaming Continuo en Tiempo Real (WebSocket)
+
+La pestana **Streaming en Tiempo Real** analiza la voz del microfono de forma continua. Necesita un
+segundo proceso: un servidor WebSocket asincrono que mantiene el modelo cargado en la GPU.
+
+```bash
+# Terminal 1: servidor de inferencia (carga emotion2vec+ Large en cuda:0 y escucha en ws://0.0.0.0:8765)
+source .venv/bin/activate
+python src/websocket_server.py
+
+# Terminal 2: interfaz web
+source .venv/bin/activate
+streamlit run app.py
+```
+
+Flujo del pipeline:
+
+1. **Navegador:** captura el microfono con un `AudioWorklet`, remuestrea a 16 kHz mono y envia tramas PCM Float32 de 250 ms por WebSocket.
+2. **Servidor (`src/websocket_server.py`):** acumula el audio en un bufer circular acotado a 5 s. Cada 1.0 s de audio nuevo toma la ventana de los ultimos 3.0 s.
+3. **Concurrencia:** la inferencia corre en un hilo aparte (`asyncio.to_thread`), asi el bucle de eventos sigue recibiendo audio mientras la GPU trabaja. Un `asyncio.Lock` serializa el acceso al unico modelo en GPU, y si la GPU esta ocupada se descartan las ventanas atrasadas para analizar siempre la mas reciente.
+4. **Respuesta:** JSON con la emocion predominante, las 9 probabilidades, valencia/activacion (Russell 2D), latencia y VRAM. El panel se actualiza sin recargar Streamlit.
+
+Tolerancia a fallos: si el servidor esta apagado, la pestana muestra instrucciones en lugar de un error; si se niega el microfono o se pierde la conexion, el panel lo indica y la app sigue funcionando. Las ventanas en silencio (RMS < 0.004) no se envian al modelo.
+
+> El navegador solo permite usar el microfono en `https://` o en `http://localhost`. Abre la app como `http://localhost:8501`.
 
 ---
 

@@ -52,37 +52,21 @@ def _client_html(port: int) -> str:
 
 
 def render_streaming_tab(render_html):
-    """Dibuja la pestaña completa. `render_html` es el helper de app.py."""
-    render_html("""
-    <div class="section-card" style="min-height: auto !important; height: auto !important; margin-bottom: 12px; padding: 14px 20px;">
-        <div class="card-title-row" style="margin-bottom: 6px;">
-            <div class="card-title" style="font-size: 0.82rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-                Streaming Continuo de Voz en Tiempo Real vía WebSocket
-            </div>
-            <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0; font-size: 0.74rem;">
-                ws://localhost:8765 | PCM Float32 16.000 Hz
-            </div>
-        </div>
-        <p style="font-size: 0.84rem; color: #574A43; margin: 0; line-height: 1.4;">
-            El navegador transmite el micrófono en tramas de 250 ms. El servidor mantiene un búfer circular
-            y analiza con <b>emotion2vec+ Large</b> la ventana de los últimos <b>3.0 s</b> cada <b>1.0 s</b> de audio nuevo,
-            ejecutando la inferencia en un hilo aparte para no bloquear la red.
-        </p>
-    </div>
-    """)
-
+    """Dibuja la pestaña completa de streaming en tiempo real vía WebSocket."""
     status = check_ws_server()
     c_status, c_retry = st.columns([5, 1])
     with c_status:
         if status["online"]:
-            st.success(f"**Servidor WebSocket activo** en `ws://localhost:{WS_PORT}` "
-                       f"· dispositivo de inferencia: `{status['device']}`")
+            st.success(f"**Servidor WebSocket Activo** en `ws://localhost:{WS_PORT}` · Dispositivo de cómputo en silicio: `{status['device']}`")
         else:
             st.warning(
-                "**Servidor WebSocket apagado o inaccesible.** La pestaña sigue funcionando, "
-                "pero para transmitir en vivo:\n\n"
+                "**Servidor WebSocket apagado o inaccesible.** Para transmitir micrófono en vivo:\n\n"
                 "1. Abre otra terminal en la carpeta del proyecto y ejecuta: `uv run python src/websocket_server.py`\n"
+                "2. Espera el mensaje *Servidor listo*\n"
+                "3. Pulsa **Comprobar de nuevo**."
+            )
+    with c_retry:
+        st.button("Comprobar de nuevo", key="ws_recheck", use_container_width=True)
                 "2. Espera el mensaje *Servidor listo*\n"
                 "3. Pulsa **Comprobar de nuevo**."
             )

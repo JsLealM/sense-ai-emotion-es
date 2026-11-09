@@ -266,7 +266,9 @@ def run_emotion2vec_inference(
         raw_labels = first_item.get("labels", [])
         raw_scores = first_item.get("scores", [])
 
-        # Timeline para audios cortos
+        # Timeline y agregación temporal para audios cortos
+        short_chunk_scores = []
+        labels_ref_short = None
         if duration > 1.5 and total_samples > int(1.0 * sr):
             win_samples = int(window_sec * sr)
             stride_samples = int(stride_sec * sr)
@@ -291,6 +293,9 @@ def run_emotion2vec_inference(
                         c_item = chunk_res[0] if chunk_res else {}
                         c_scores = c_item.get("scores", [])
                         if c_scores:
+                            short_chunk_scores.append(c_scores)
+                            if labels_ref_short is None and "labels" in c_item:
+                                labels_ref_short = c_item["labels"]
                             top_idx = int(np.argmax(c_scores))
                             top_raw = c_item.get("labels", [])[top_idx]
                             top_es = E2V_LABEL_MAP.get(top_raw, top_raw)
@@ -323,6 +328,12 @@ def run_emotion2vec_inference(
                     })
                     curr += stride_samples
                     w_idx += 1
+
+            # Promediar ventanas si hubo segmentación para evitar el colapso de atención del audio completo
+            if short_chunk_scores:
+                raw_scores = np.mean(short_chunk_scores, axis=0).tolist()
+                if labels_ref_short:
+                    raw_labels = labels_ref_short
         else:
             segments.append({
                 "index": 1,

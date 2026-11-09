@@ -9,7 +9,11 @@ import sys
 import time
 import datetime
 from typing import Dict, Any, List, Optional
-import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 # Intentar importar psutil si está disponible, o usar fallback nativo
 try:
@@ -103,7 +107,7 @@ def generate_terminal_logs(
     cpu_metrics = get_system_cpu_usage()
     cpu_pct = cpu_metrics["cpu_percent"]
     cpu_cores = cpu_metrics["cpu_count"]
-    is_cuda = "cuda" in current_device.lower() and torch.cuda.is_available()
+    is_cuda = "cuda" in current_device.lower() and HAS_TORCH and torch.cuda.is_available()
 
     cuda_telemetry = get_cuda_status() if is_cuda else {}
     vram_used = cuda_telemetry.get("vram_reserved_mb", 770.0)

@@ -6,7 +6,11 @@ Incorpora el Modelo Circunflejo de Russell (Valence & Arousal) y descriptores la
 """
 
 from typing import Dict, Any, List, Tuple
-import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 EMOTION_TRANSLATION = {
     # Clases oficiales de emotion2vec+ (9 clases)
@@ -129,19 +133,24 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
 
 
 def parse_emotion_probabilities(
-    logits: torch.Tensor,
+    logits: Any,
     id2label: Dict[int, str]
 ) -> Dict[str, Any]:
     """
     Convierte los logits brutos del modelo en una distribución de probabilidad softmax
-    y estructura los resultados en las 6 categorías en español, vector circunflejo
+    y estructura los resultados en las categorías en español, vector circunflejo
     y métricas de incidencia de AuraVoice.
     """
-    if logits.ndim > 1:
-        logits = logits[0]
-
-    # Aplicar Softmax para obtener probabilidades que sumen 1.0 (100%)
-    probs = torch.softmax(logits.float(), dim=-1).detach().cpu().numpy()
+    if HAS_TORCH and isinstance(logits, torch.Tensor):
+        if logits.ndim > 1:
+            logits = logits[0]
+        probs = torch.softmax(logits.float(), dim=-1).detach().cpu().numpy()
+    else:
+        probs = np.array(logits, dtype=np.float32)
+        if probs.ndim > 1:
+            probs = probs[0]
+        exp_p = np.exp(probs - np.max(probs))
+        probs = exp_p / np.sum(exp_p)
 
     emotion_scores: Dict[str, float] = {}
     detailed_list: List[Dict[str, Any]] = []

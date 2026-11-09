@@ -11,7 +11,11 @@ import time
 import contextlib
 from typing import Dict, Any, List, Optional
 import numpy as np
-import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 from src.audio_processor import load_audio_array_16k, convert_to_wav_16k_mono, get_audio_metadata
 from src.result_parser import compute_circumplex_state, EMOTION_COLORS, ETHICAL_DISCLAIMER

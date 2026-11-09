@@ -5,7 +5,11 @@ que los tensores y modelos residan realmente en la GPU.
 """
 
 from typing import Dict, Any, Optional
-import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 
 def get_cuda_status() -> Dict[str, Any]:
@@ -25,6 +29,21 @@ def get_cuda_status() -> Dict[str, Any]:
       - vram_reserved_mb: float
       - vram_free_mb: float
     """
+    if not HAS_TORCH:
+        return {
+            "is_available": False,
+            "pytorch_version": "No instalado (Modo UI Demo)",
+            "cuda_version": None,
+            "device_count": 0,
+            "device_name": "No detectada (CPU)",
+            "compute_capability": None,
+            "current_device": None,
+            "vram_total_mb": 0.0,
+            "vram_allocated_mb": 0.0,
+            "vram_reserved_mb": 0.0,
+            "vram_free_mb": 0.0,
+        }
+
     cuda_available = torch.cuda.is_available()
     status: Dict[str, Any] = {
         "is_available": cuda_available,
@@ -116,7 +135,7 @@ class CUDAMemoryTracker:
 
     def __init__(self, device: str = "cuda:0"):
         self.device = device
-        self.is_cuda = "cuda" in device and torch.cuda.is_available()
+        self.is_cuda = "cuda" in device and HAS_TORCH and torch.cuda.is_available()
         self.start_allocated_mb = 0.0
         self.peak_allocated_mb = 0.0
         self.end_allocated_mb = 0.0

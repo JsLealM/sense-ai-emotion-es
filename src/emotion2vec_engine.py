@@ -173,16 +173,9 @@ def run_emotion2vec_inference(
     # Si duration > 8.0s, procesar en un único barrido de ventanas para evitar la matriz de atención O(T^2)
     # que causa CUDA OOM en secuencias largas (>3000 frames) en GPUs de 4 GB.
     if duration > 8.0 and total_samples > int(1.0 * sr):
-        # Configurar longitud de ventana y paso adaptativo
-        if duration <= 25.0:
-            eff_win_sec = 3.5
-            eff_stride_sec = 2.5
-        elif duration <= 60.0:
-            eff_win_sec = 5.0
-            eff_stride_sec = 3.5
-        else:
-            eff_win_sec = 6.0
-            eff_stride_sec = 4.5
+        # Configurar longitud de ventana y paso (respetando la configuración del usuario)
+        eff_win_sec = float(window_sec) if window_sec else 3.0
+        eff_stride_sec = float(stride_sec) if stride_sec else max(0.5, round(eff_win_sec * 0.67, 1))
 
         win_samples = int(eff_win_sec * sr)
         stride_samples = int(eff_stride_sec * sr)

@@ -847,6 +847,12 @@ if "last_parsed_result" not in st.session_state:
 if "last_audio_array" not in st.session_state:
     st.session_state.last_audio_array = None
 
+if "cfg_window_sec" not in st.session_state:
+    st.session_state.cfg_window_sec = 3.0
+
+if "cfg_stride_sec" not in st.session_state:
+    st.session_state.cfg_stride_sec = 2.0
+
 
 @st.cache_resource(show_spinner=False)
 def get_cached_emotion2vec(dev_choice: str):
@@ -1033,7 +1039,9 @@ with tab_live:
                     try:
                         dev_choice = "cuda:0" if is_cuda_avail else "cpu"
                         e2v_model = get_cached_emotion2vec(dev_choice)
-                        inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=3.0, stride_sec=2.0)
+                        active_win = float(st.session_state.get("cfg_window_sec", 3.0))
+                        active_stride = float(st.session_state.get("cfg_stride_sec", max(0.5, round(active_win * 0.67, 1))))
+                        inf_res = run_emotion2vec_inference(e2v_model, audio_target_path, device=dev_choice, window_sec=active_win, stride_sec=active_stride)
 
                         if inf_res["status"] == "EXITOSA":
                             st.session_state.last_parsed_result = inf_res["parsed_result"]
@@ -1436,12 +1444,14 @@ with tab_live:
             )
         timeline_chips_inner = "".join(chips_list)
         axis_end_str = f"{tot_dur}s"
-        badge_text = f"GPU Batch: {num_w} Ventanas | Latencia Lote: {b_lat} ms ({ms_per_w} ms/v)"
+        used_win = tl.get("window_sec", st.session_state.get("cfg_window_sec", 3.0))
+        badge_text = f"GPU Batch: {num_w} Ventanas ({used_win}s) | Latencia Lote: {b_lat} ms ({ms_per_w} ms/v)"
     else:
         timeline_bar_inner = '<div class="timeline-segment" style="width:100%; background:#F1F5F9; color:#94A3B8; font-size:0.75rem; text-align:center; line-height:24px;">En espera de inferencia de audio...</div>'
         timeline_chips_inner = '<span style="font-size:0.76rem; color:#94A3B8; font-style:italic;">Ejecuta la inferencia sobre una grabación para proyectar la transición cronológica de emociones calculada en GPU.</span>'
         axis_end_str = "--- s"
-        badge_text = "Modo: Ventana Deslizante (3.0s) | PyTorch CUDA Batching"
+        cfg_w_val = st.session_state.get("cfg_window_sec", 3.0)
+        badge_text = f"Modo: Ventana Deslizante ({cfg_w_val}s) | PyTorch CUDA Batching"
 
     legend_items_list = [
         '<div class="legend-item"><div class="legend-color-dot" style="background:#574A43;"></div>Neutral</div>',
@@ -1608,8 +1618,23 @@ with tab_config:
         st.write(f"**PyTorch:** `{cuda_info['pytorch_version']}`")
 
         opt_fp16 = st.checkbox("Optimización FP16 (Media Precisión Tensor)", value=True, help="Reduce el uso de VRAM a ~770 MiB.")
-        opt_vad = st.checkbox("Segmentación Deslizante O(1) VRAM", value=True, help="Ventanas de 3.0s con solapamiento de 2.0s para audios largos.")
-        buf_size = st.select_slider("Tamaño de Ventana Deslizante (s):", options=[1.0, 2.0, 3.0, 5.0, 8.0], value=3.0)
+        opt_vad = st.checkbox("Segmentación Deslizante O(1) VRAM", value=True, help="Ventanas configurables con solapamiento temporal para crono-análisis.")
+
+        def on_window_change():
+            st.session_state.cfg_window_sec = float(st.session_state.cfg_window_slider)
+            st.session_state.cfg_stride_sec = max(0.5, round(st.session_state.cfg_window_sec * 0.67, 1))
+
+        buf_size = st.select_slider(
+            "Tamaño de Ventana Deslizante (s):",
+            options=[1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0],
+            value=float(st.session_state.get("cfg_window_sec", 3.0)),
+            key="cfg_window_slider",
+            on_change=on_window_change,
+            help="Controla la duración de cada segmento analizado por el kernel GPU en el crono-análisis de la pestaña de Sesión en Vivo."
+        )
+        st.session_state.cfg_window_sec = float(buf_size)
+        st.session_state.cfg_stride_sec = max(0.5, round(buf_size * 0.67, 1))
+        st.caption(f"Configuración activa: Ventana = **{st.session_state.cfg_window_sec}s** | Salto = **{st.session_state.cfg_stride_sec}s**")
 
     with cfg_col2:
         st.markdown("#### Arquitectura del Pipeline Acústico (Zero Multimodal)")

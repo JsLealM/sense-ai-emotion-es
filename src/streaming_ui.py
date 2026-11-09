@@ -67,11 +67,6 @@ def render_streaming_tab(render_html):
             )
     with c_retry:
         st.button("Comprobar de nuevo", key="ws_recheck", use_container_width=True)
-                "2. Espera el mensaje *Servidor listo*\n"
-                "3. Pulsa **Comprobar de nuevo**."
-            )
-    with c_retry:
-        st.button("Comprobar de nuevo", key="ws_recheck", use_container_width=True)
 
     try:
         st.components.v1.html(_client_html(WS_PORT), height=740, scrolling=False)

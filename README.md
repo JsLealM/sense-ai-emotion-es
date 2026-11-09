@@ -17,14 +17,25 @@
 ---
 
 ## Tabla de Contenidos
-1. [Modelo Fundacional Hugging Face: emotion2vec+ Large](#1-modelo-fundacional-hugging-face-emotion2vec-large)
-2. [Descripcion de la Aplicacion y Problema que Resuelve](#2-descripcion-de-la-aplicacion-y-problema-que-resuelve)
-3. [Pruebas y Funcionamiento en Vivo](#3-pruebas-y-funcionamiento-en-vivo)
-4. [Aceleracion y Funcionamiento de NVIDIA CUDA](#4-aceleracion-y-funcionamiento-de-nvidia-cuda)
-5. [Arquitectura del Sistema](#5-arquitectura-del-sistema)
-6. [Instalacion y Puesta en Marcha](#6-instalacion-y-puesta-en-marcha)
-7. [Guia para el Video Explicativo y Sustentacion](#7-guia-para-el-video-explicativo-y-sustentacion)
-8. [Contribuidores y Licencia](#8-contribuidores-y-licencia)
+- [SENSE AI / AuraVoice — Analizador Emocional de Voz en Tiempo Real](#sense-ai--auravoice--analizador-emocional-de-voz-en-tiempo-real)
+  - [Tabla de Contenidos](#tabla-de-contenidos)
+  - [1. Modelo Fundacional Hugging Face: emotion2vec+ Large](#1-modelo-fundacional-hugging-face-emotion2vec-large)
+    - [¿Por Que se Eligio Este Modelo?](#por-que-se-eligio-este-modelo)
+    - [Restricciones Tecnicas y Solucion de Arquitectura](#restricciones-tecnicas-y-solucion-de-arquitectura)
+  - [2. Descripcion de la Aplicacion y Problema que Resuelve](#2-descripcion-de-la-aplicacion-y-problema-que-resuelve)
+    - [¿Que Problema Resuelve?](#que-problema-resuelve)
+    - [¿Que Hace AuraVoice Engine?](#que-hace-auravoice-engine)
+  - [3. Pruebas y Funcionamiento en Vivo](#3-pruebas-y-funcionamiento-en-vivo)
+    - [Resumen de Pruebas con Audios Reales](#resumen-de-pruebas-con-audios-reales)
+  - [4. Aceleracion y Funcionamiento de NVIDIA CUDA](#4-aceleracion-y-funcionamiento-de-nvidia-cuda)
+  - [5. Arquitectura del Sistema](#5-arquitectura-del-sistema)
+  - [6. Instalacion y Puesta en Marcha](#6-instalacion-y-puesta-en-marcha)
+    - [Prerrequisitos](#prerrequisitos)
+    - [Paso a Paso con `uv`](#paso-a-paso-con-uv)
+    - [Streaming Continuo en Tiempo Real (WebSocket)](#streaming-continuo-en-tiempo-real-websocket)
+  - [7. Contribuidores y Licencia](#7-contribuidores-y-licencia)
+    - [Integrantes del Grupo](#integrantes-del-grupo)
+    - [Licencias](#licencias)
 
 ---
 
@@ -65,11 +76,11 @@ La clasificacion tradicional de afecto y prosodia depende frecuentemente de llam
 
 ### Resumen de Pruebas con Audios Reales
 
-| Fichero de Prueba | Duracion | Estado Predominante | Confianza | Latencia CUDA | Diagnostico Acustico |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Audio 1 (`WhatsApp Audio...`)** | 1.39 s | **Enojo** | **98.4%** | 32.1 ms | Tension glotal marcada y alta concentracion armonica superior. |
-| **Audio 2 (`WhatsApp Ptt 59s...`)** | 59.05 s | **Neutral** | **94.2%** | 1220.0 ms | Discurso conversacional prolongado con modulacion controlada. Peak VRAM: 770 MiB. |
-| **Audio 3 (`WhatsApp Ptt 8.8s...`)** | 8.81 s | **Tristeza** | **95.8%** | 347.2 ms | Caida de formantes acusticos y ritmo prosodico atenuado. |
+| Fichero de Prueba                    | Duracion | Estado Predominante | Confianza | Latencia CUDA | Diagnostico Acustico                                                              |
+| :----------------------------------- | :------: | :-----------------: | :-------: | :-----------: | :-------------------------------------------------------------------------------- |
+| **Audio 1 (`WhatsApp Audio...`)**    |  1.39 s  |      **Enojo**      | **98.4%** |    32.1 ms    | Tension glotal marcada y alta concentracion armonica superior.                    |
+| **Audio 2 (`WhatsApp Ptt 59s...`)**  | 59.05 s  |     **Neutral**     | **94.2%** |   1220.0 ms   | Discurso conversacional prolongado con modulacion controlada. Peak VRAM: 770 MiB. |
+| **Audio 3 (`WhatsApp Ptt 8.8s...`)** |  8.81 s  |    **Tristeza**     | **95.8%** |   347.2 ms    | Caida de formantes acusticos y ritmo prosodico atenuado.                          |
 
 ---
 
@@ -195,22 +206,12 @@ Tolerancia a fallos: si el servidor esta apagado, la pestana muestra instruccion
 
 ---
 
-## 7. Guia para el Video Explicativo y Sustentacion
-
-Para la sustentacion formal de la asignatura, consultar el dossier academico:
-* **Estructura del Video de 5 Minutos:** [Dossier Tecnico](file:///home/jslealm/.gemini/antigravity-cli/brain/093632c5-ab75-44e1-9f03-ebc314a95190/guia_definitiva_parcial_aura_voice.md#4-video-explicativo-de-5-minutos-guion-estructurado).
-* **Guion de Diapositivas para Sustentacion:** [Guion de Diapositivas](file:///home/jslealm/.gemini/antigravity-cli/brain/093632c5-ab75-44e1-9f03-ebc314a95190/guia_definitiva_parcial_aura_voice.md#7-guion-de-sustentacion-de-10-minutos).
-* **Justificaciones Clave ante el Docente:** Explicacion de atencion cuadratica $O(T^2)$, solucion de memoria acotada $O(1)$ en VRAM de 4 GB, sincronizacion de streams y modelo acustico puro sin componentes multimodales de texto.
-
----
-
-## 8. Contribuidores y Licencia
+## 7. Contribuidores y Licencia
 
 ### Integrantes del Grupo
-* **Integrante 1:** Arquitectura de GPU, gestion de memoria VRAM y sincronizacion de streams.
-* **Integrante 2:** Preprocesamiento acustico, extraccion de caracteristicas y normalizacion a 16kHz.
-* **Integrante 3:** Segmentacion deslizante $O(1)$, temporal pooling y modelo circunflejo de Russell.
-* **Integrante 4:** Interfaz reactiva AuraVoice, consola AuraTerminal y trazabilidad explicable XAI.
+* **Integrante 1:** JsLealMJohan -> Sebastian Leal Mendez
+* **Integrante 2:** Hades0131Andres -> David Benitez
+* **Integrante 3:** jhayderstiven03-collab -> Jhayder Florez 
 
 ### Licencias
 * **Codigo Fuente:** [MIT License](LICENSE).

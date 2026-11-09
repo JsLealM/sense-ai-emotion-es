@@ -984,7 +984,7 @@ with tab_live:
                 }
                 if os.path.exists(samples_dir):
                     for f in os.listdir(samples_dir):
-                        if f.endswith((".wav", ".mp3", ".ogg")) and f not in ["sample_en.wav", "sample_zh.wav"]:
+                        if f.endswith((".wav", ".mp3", ".ogg", ".m4a", ".flac")) and f not in ["sample_en.wav", "sample_zh.wav"]:
                             sample_choices[f"Grabación: {f}"] = os.path.join(samples_dir, f)
 
                 selected_s = st.selectbox("Selecciona grabación de prueba:", options=list(sample_choices.keys()))

@@ -307,7 +307,7 @@ div[data-testid="stVerticalBlock"] > div:has(style) {
     min-width: 3px;
     background: linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%);
     border-radius: 9999px;
-    transition: height 0.3s ease;
+    transition: height 0.3s ease, background 0.4s ease, box-shadow 0.4s ease;
 }
 
 .waveform-footer {
@@ -1065,25 +1065,46 @@ with tab_live:
     # --------------------------------------------------------------------------
     waveform_data = extract_waveform_bars(st.session_state.last_audio_array, num_bars=50)
 
-    # Generar barras HTML en una sola línea sin sangría
+    # Mapeo de gradientes dinámicos para que la onda cambie de color según la emoción capturada
+    EMOTION_GRADIENTS = {
+        "Alegría": "linear-gradient(180deg, #EA580C 0%, #F59E0B 55%, #C2410C 100%)",
+        "Tristeza": "linear-gradient(180deg, #0D9488 0%, #14B8A6 55%, #0F766E 100%)",
+        "Enojo": "linear-gradient(180deg, #EF4444 0%, #F43F5E 55%, #991B1B 100%)",
+        "Miedo": "linear-gradient(180deg, #E11D48 0%, #BE123C 55%, #881337 100%)",
+        "Disgusto": "linear-gradient(180deg, #D97706 0%, #B45309 55%, #78350F 100%)",
+        "Neutral": "linear-gradient(180deg, #574A43 0%, #786C65 55%, #382E2B 100%)",
+        "Sorpresa": "linear-gradient(180deg, #8B5CF6 0%, #7C3AED 55%, #5B21B6 100%)",
+        "Otro": "linear-gradient(180deg, #64748B 0%, #475569 55%, #334155 100%)",
+        "Neutro / Desc.": "linear-gradient(180deg, #475569 0%, #334155 55%, #1E293B 100%)"
+    }
+
+    detected_emo = st.session_state.last_parsed_result.get("predominant_emotion") if st.session_state.last_parsed_result else None
+    detected_color = EMOTION_COLORS.get(detected_emo, "#EA580C") if detected_emo else "#EA580C"
+    active_gradient = EMOTION_GRADIENTS.get(detected_emo, "linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%)")
+    active_shadow = f"box-shadow: 0 0 6px {detected_color}60;" if detected_emo else ""
+
+    if detected_emo:
+        waveform_status_tag = f'<span class="tag-badge" style="background:{detected_color}1A; color:{detected_color}; font-weight:700; border:1px solid {detected_color}4D;">● Estado Capturado: {detected_emo}</span>'
+    else:
+        waveform_status_tag = '<span class="tag-badge" style="background:#FFEDD5; color:#C2410C; font-weight:700;">Señal Acústica Normalizada (16.000 Hz Mono)</span>'
+
+    # Generar barras HTML con el color y gradiente dinámico de la emoción
     bars_html_elements = []
     for h in waveform_data["bars"]:
         pct = max(8, int(h * 100))
-        bars_html_elements.append(f'<div class="wave-bar" style="height:{pct}%;"></div>')
+        bars_html_elements.append(f'<div class="wave-bar" style="height:{pct}%; background:{active_gradient}; {active_shadow}"></div>')
     bars_html = "".join(bars_html_elements)
 
     waveform_card_html = f"""
     <div class="waveform-card">
         <div class="waveform-header">
             <div class="waveform-tags">
-                <span class="tag-badge" style="background:#FFEDD5; color:#C2410C; font-weight:700;">
-                    Señal Acústica Normalizada (16.000 Hz Mono)
-                </span>
+                {waveform_status_tag}
                 <span class="tag-badge">Espectro: {waveform_data['mel_bands']} Mel-Bands</span>
             </div>
             <div class="waveform-metrics">
-                <div>NIVEL RMS <span class="metric-highlight">{waveform_data['rms_db']} dB</span></div>
-                <div>PICO MÁX <span class="metric-highlight">{waveform_data['peak_db']} dB</span></div>
+                <div>NIVEL RMS <span class="metric-highlight" style="color:{detected_color};">{waveform_data['rms_db']} dB</span></div>
+                <div>PICO MÁX <span class="metric-highlight" style="color:{detected_color};">{waveform_data['peak_db']} dB</span></div>
             </div>
         </div>
         <div class="waveform-visual-container">

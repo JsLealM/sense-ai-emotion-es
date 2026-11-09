@@ -176,7 +176,8 @@ html, body { margin: 0; padding: 2px; background: transparent;
 .level-track { background: #FDFBFA; border: 1px solid #F5ECE5; border-radius: 12px; height: 54px; padding: 8px;
     display: flex; align-items: center; gap: 3px; }
 .level-track > div { flex: 1; min-width: 3px; height: 6%; border-radius: 9999px;
-    background: linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%); transition: height .12s ease; }
+    background: linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%);
+    transition: height .12s ease, background .4s ease, box-shadow .4s ease; }
 #timeline { display: flex; gap: 3px; height: 22px; margin-top: 8px; }
 #timeline > div { flex: 1; border-radius: 4px; background: #F3ECE6; }
 </style></head>
@@ -358,10 +359,26 @@ html, body { margin: 0; padding: 2px; background: transparent;
     try { if (ctx && ctx.state !== "closed") ctx.close(); } catch (e) {}
     src = node = stream = ctx = null; pending = []; pendingLen = 0;
     levelHist = new Array(LEVEL_BARS).fill(0);
-    Array.from($("level").children).forEach(c => c.style.height = "6%");
+    Array.from($("level").children).forEach(c => {
+      c.style.height = "6%";
+      c.style.background = "linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%)";
+      c.style.boxShadow = "none";
+    });
   }
 
   // ---------- Renderizado de resultados ----------
+  const EMOTION_GRADIENTS = {
+    "Alegría": "linear-gradient(180deg, #EA580C 0%, #F59E0B 55%, #C2410C 100%)",
+    "Tristeza": "linear-gradient(180deg, #0D9488 0%, #14B8A6 55%, #0F766E 100%)",
+    "Enojo": "linear-gradient(180deg, #EF4444 0%, #F43F5E 55%, #991B1B 100%)",
+    "Miedo": "linear-gradient(180deg, #E11D48 0%, #BE123C 55%, #881337 100%)",
+    "Disgusto": "linear-gradient(180deg, #D97706 0%, #B45309 55%, #78350F 100%)",
+    "Neutral": "linear-gradient(180deg, #574A43 0%, #786C65 55%, #382E2B 100%)",
+    "Sorpresa": "linear-gradient(180deg, #8B5CF6 0%, #7C3AED 55%, #5B21B6 100%)",
+    "Otro": "linear-gradient(180deg, #64748B 0%, #475569 55%, #334155 100%)",
+    "Neutro / Desc.": "linear-gradient(180deg, #475569 0%, #334155 55%, #1E293B 100%)"
+  };
+
   const sign = (x) => (x >= 0 ? "+" : "") + x.toFixed(2);
   function render(d) {
     $("pred").textContent = d.predominant; $("pred").style.color = d.color;
@@ -370,6 +387,15 @@ html, body { margin: 0; padding: 2px; background: transparent;
     $("tag").textContent = "● " + (d.circumplex_title || d.predominant);
     $("tag").style.background = d.color;
     $("ts").textContent = `Ventana #${d.window} · ${d.timestamp}`;
+
+    // Actualizar color de la onda acústica según el estado emocional capturado
+    const activeGrad = EMOTION_GRADIENTS[d.predominant] || `linear-gradient(180deg, ${d.color} 0%, #292524 100%)`;
+    const levelCells = $("level").children;
+    for (let i = 0; i < LEVEL_BARS; i++) {
+      levelCells[i].style.background = activeGrad;
+      levelCells[i].style.boxShadow = `0 0 6px ${d.color}60`;
+    }
+
     const byName = {}; d.breakdown.forEach(b => byName[b.name] = b.percent);
     CLASSES.forEach(c => {
       const p = byName[c.name] || 0;

@@ -88,10 +88,37 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
 
     # Determinar título latente compuesto y etiqueta semántica
     max_emo = max(scores.items(), key=lambda x: x[1])[0] if scores else "Neutral"
-    if max_emo == "Sorpresa":
+    max_prob = scores.get(max_emo, 0.0)
+
+    # Si hay una emoción dominante con alta confianza (>40%), respetar su identidad primaria
+    if max_emo == "Neutral" and max_prob >= 0.4:
+        title = "Neutral / Reposo Acústico"
+        tag = "● Neutral"
+        tag_color = "#574A43"
+    elif max_emo == "Sorpresa" and max_prob >= 0.4:
         title = "Sorpresa / Asombro Intenso"
         tag = "● Asombrado"
         tag_color = "#8B5CF6"
+    elif max_emo == "Tristeza" and max_prob >= 0.4:
+        title = "Tristeza / Introspección"
+        tag = "● Decaído"
+        tag_color = "#0D9488"
+    elif max_emo == "Enojo" and max_prob >= 0.4:
+        title = "Enojo / Tensión Elevada"
+        tag = "● Agitado"
+        tag_color = "#F43F5E"
+    elif max_emo == "Alegría" and max_prob >= 0.4:
+        title = "Alegría / Entusiasmo"
+        tag = "● Expresivo"
+        tag_color = "#EA580C"
+    elif max_emo == "Miedo" and max_prob >= 0.4:
+        title = "Miedo / Alerta Tensa"
+        tag = "● Temeroso"
+        tag_color = "#E11D48"
+    elif max_emo == "Disgusto" and max_prob >= 0.4:
+        title = "Disgusto / Rechazo Acústico"
+        tag = "● Disgustado"
+        tag_color = "#D97706"
     elif valence >= 0.3:
         if arousal >= 0.5:
             title = "Alegría / Entusiasmo"
@@ -111,7 +138,7 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
             tag = "● Decaído"
             tag_color = "#0D9488"
     else:
-        if arousal >= 0.5:
+        if arousal >= 0.65:
             title = "Alerta / Atención Activa"
             tag = "● Atento"
             tag_color = "#EA580C"

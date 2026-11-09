@@ -54,17 +54,17 @@ def _client_html(port: int) -> str:
 def render_streaming_tab(render_html):
     """Dibuja la pestaña completa. `render_html` es el helper de app.py."""
     render_html("""
-    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
-        <div class="card-title-row">
-            <div class="card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    <div class="section-card" style="min-height: auto !important; height: auto !important; margin-bottom: 12px; padding: 14px 20px;">
+        <div class="card-title-row" style="margin-bottom: 6px;">
+            <div class="card-title" style="font-size: 0.82rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                 Streaming Continuo de Voz en Tiempo Real vía WebSocket
             </div>
-            <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0;">
+            <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0; font-size: 0.74rem;">
                 ws://localhost:8765 | PCM Float32 16.000 Hz
             </div>
         </div>
-        <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
+        <p style="font-size: 0.84rem; color: #574A43; margin: 0; line-height: 1.4;">
             El navegador transmite el micrófono en tramas de 250 ms. El servidor mantiene un búfer circular
             y analiza con <b>emotion2vec+ Large</b> la ventana de los últimos <b>3.0 s</b> cada <b>1.0 s</b> de audio nuevo,
             ejecutando la inferencia en un hilo aparte para no bloquear la red.
@@ -82,15 +82,15 @@ def render_streaming_tab(render_html):
             st.warning(
                 "**Servidor WebSocket apagado o inaccesible.** La pestaña sigue funcionando, "
                 "pero para transmitir en vivo:\n\n"
-                "1. Abre otra terminal en la carpeta del proyecto y activa el entorno: `source .venv/bin/activate`\n"
-                "2. Ejecuta: `python src/websocket_server.py` y espera el mensaje *Servidor listo*\n"
+                "1. Abre otra terminal en la carpeta del proyecto y ejecuta: `uv run python src/websocket_server.py`\n"
+                "2. Espera el mensaje *Servidor listo*\n"
                 "3. Pulsa **Comprobar de nuevo**."
             )
     with c_retry:
         st.button("Comprobar de nuevo", key="ws_recheck", use_container_width=True)
 
     try:
-        st.components.v1.html(_client_html(WS_PORT), height=640, scrolling=False)
+        st.components.v1.html(_client_html(WS_PORT), height=740, scrolling=False)
     except Exception as exc:  # El panel nunca debe tumbar la app
         st.info(f"No se pudo cargar el panel de streaming en este navegador: {exc}")
 
@@ -147,20 +147,20 @@ html, body { margin: 0; padding: 2px; background: transparent;
 .circumplex-vector { font-size: 0.78rem; font-weight: 600; color: #9A3412; font-family: 'JetBrains Mono', monospace; }
 .emotion-state-tag { background: var(--primary); color: white; font-size: 0.78rem; font-weight: 700; padding: 6px 14px;
     border-radius: var(--radius-pill); box-shadow: 0 2px 8px rgba(234, 88, 12, 0.25); white-space: nowrap; }
-.prob-item { margin-bottom: 10px; }
-.prob-meta { display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 600; margin-bottom: 4px; }
+.prob-item { margin-bottom: 7px; }
+.prob-meta { display: flex; justify-content: space-between; font-size: 0.80rem; font-weight: 600; margin-bottom: 3px; }
 .prob-name { color: #382E2B; }
 .prob-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #1F2937; }
-.prob-track { background: #F3ECE6; height: 7px; border-radius: 9999px; overflow: hidden; }
+.prob-track { background: #F3ECE6; height: 6px; border-radius: 9999px; overflow: hidden; }
 .prob-fill { height: 100%; width: 0; border-radius: 9999px; transition: width 0.4s ease; }
-.model-specs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px;
-    padding-top: 14px; border-top: 1px solid var(--border-light); }
-.model-specs-grid.two { grid-template-columns: repeat(2, 1fr); margin-top: 16px; }
-.spec-box { background: #FBF8F5; border: 1px solid #EFE5DD; border-radius: 10px; padding: 10px 8px; text-align: center; }
-.spec-label { font-size: 0.70rem; font-weight: 600; color: var(--neutral-muted); text-transform: uppercase; margin-bottom: 2px; }
-.spec-value { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.88rem; font-weight: 800; color: #261E1A; }
-.spec-sub { font-size: 0.68rem; color: #0D9488; font-weight: 600; }
-.section-label { font-size: 0.75rem; font-weight: 700; color: #574A43; text-transform: uppercase; }
+.model-specs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid var(--border-light); }
+.model-specs-grid.two { grid-template-columns: repeat(2, 1fr); margin-top: 12px; }
+.spec-box { background: #FBF8F5; border: 1px solid #EFE5DD; border-radius: 10px; padding: 8px 6px; text-align: center; }
+.spec-label { font-size: 0.68rem; font-weight: 600; color: var(--neutral-muted); text-transform: uppercase; margin-bottom: 2px; }
+.spec-value { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; font-weight: 800; color: #261E1A; }
+.spec-sub { font-size: 0.66rem; color: #0D9488; font-weight: 600; }
+.section-label { font-size: 0.74rem; font-weight: 700; color: #574A43; text-transform: uppercase; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Botón primario idéntico a div.stButton > button[kind="primary"] de app.py */
@@ -172,14 +172,36 @@ html, body { margin: 0; padding: 2px; background: transparent;
 .btn-primary.stop { background-color: #FFFFFF; color: #1E293B; border: 1px solid #CBD5E1; box-shadow: none; }
 .btn-primary:disabled { opacity: .6; cursor: wait; transform: none; }
 
-#msg { font-size: 0.80rem; color: var(--neutral-body); margin: 10px 0 14px; min-height: 36px; }
-.level-track { background: #FDFBFA; border: 1px solid #F5ECE5; border-radius: 12px; height: 54px; padding: 8px;
+#msg { font-size: 0.80rem; color: var(--neutral-body); margin: 8px 0 10px; min-height: 28px; }
+.level-track { background: #FDFBFA; border: 1px solid #F5ECE5; border-radius: 12px; height: 50px; padding: 7px;
     display: flex; align-items: center; gap: 3px; }
 .level-track > div { flex: 1; min-width: 3px; height: 6%; border-radius: 9999px;
     background: linear-gradient(180deg, #EA580C 0%, #F43F5E 55%, #9F1239 100%);
     transition: height .12s ease, background .4s ease, box-shadow .4s ease; }
-#timeline { display: flex; gap: 3px; height: 22px; margin-top: 8px; }
+#timeline { display: flex; gap: 3px; height: 20px; margin-top: 6px; }
 #timeline > div { flex: 1; border-radius: 4px; background: #F3ECE6; }
+
+/* AuraTerminal Live en WebSocket */
+.ws-terminal {
+    background: #140F0D;
+    border: 1px solid #382E2B;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.67rem;
+    color: #E7DDD4;
+    height: 125px;
+    overflow-y: auto;
+    line-height: 1.45;
+    margin-top: 6px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
+}
+.ws-term-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-term-line.dim { color: #8F7D74; }
+.ws-term-line .t-win { color: #F59E0B; font-weight: 600; }
+.ws-term-line .t-emo { font-weight: 700; }
+.ws-term-line .t-lat { color: #10B981; }
+.ws-term-line .t-dev { color: #38BDF8; }
 </style></head>
 <body>
 <div class="grid">
@@ -196,7 +218,7 @@ html, body { margin: 0; padding: 2px; background: transparent;
     <button id="btn" class="btn-primary">Iniciar Streaming en Vivo</button>
     <p id="msg">El navegador pedirá permiso para usar el micrófono.</p>
 
-    <div class="section-label" style="margin-bottom:8px;">Señal del micrófono</div>
+    <div class="section-label" style="margin-bottom:6px;">Señal del micrófono</div>
     <div class="level-track" id="level"></div>
 
     <div class="model-specs-grid two">
@@ -206,8 +228,16 @@ html, body { margin: 0; padding: 2px; background: transparent;
       <div class="spec-box"><div class="spec-label">Muestreo</div><div class="spec-value mono" id="s-sr">—</div><div class="spec-sub">remuestreo a 16 kHz</div></div>
     </div>
 
-    <div class="section-label" style="margin-top:16px;">Historial (últimas 24 ventanas)</div>
+    <div class="section-label" style="margin-top:12px;">Historial (últimas 24 ventanas)</div>
     <div id="timeline"></div>
+
+    <div class="section-label" style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+      <span>AuraTerminal Live (WebSocket Stream)</span>
+      <span id="term-status" style="font-size:0.67rem; color:#8F7D74; font-weight:700;">EN ESPERA</span>
+    </div>
+    <div class="ws-terminal" id="ws-term">
+      <div class="ws-term-line dim">[SISTEMA] Pulsa Iniciar Streaming para observar el crono-análisis en tiempo real...</div>
+    </div>
   </div>
 
   <!-- ======================= ESTADO EMOCIONAL EN VIVO ======================= -->
@@ -412,6 +442,37 @@ html, body { margin: 0; padding: 2px; background: transparent;
     $("d-gpu").textContent = d.device === "cpu" ? "Procesador" : d.gpu_name.replace("NVIDIA GeForce ", "");
     $("d-vram").textContent = d.device === "cpu" ? "n/a" : d.vram_mb.toFixed(0) + " MiB";
     pushHistory(d.color, `${d.timestamp} ${d.predominant} ${d.confidence}%`);
+    appendTermLine(d);
+  }
+
+  function appendTermLine(d) {
+    const term = $("ws-term");
+    if (!term) return;
+    const line = document.createElement("div");
+    line.className = "ws-term-line";
+    const ts = d.timestamp || new Date().toTimeString().split(" ")[0];
+    const dev = (d.device === "cpu" ? "CPU" : (d.device || "CUDA:0")).toUpperCase();
+    line.innerHTML = `<span style="color:#8F7D74;">[${ts}]</span> ` +
+      `<span class="t-dev">[${dev}]</span> ` +
+      `<span class="t-win">win #${d.window}</span>: ` +
+      `<span class="t-emo" style="color:${d.color};">${d.predominant} (${d.confidence}%)</span> | ` +
+      `<span class="t-lat">${d.latency_ms.toFixed(1)} ms</span> | ` +
+      `<span style="color:#A8A29E;">RMS: ${(d.rms || 0).toFixed(4)}</span>`;
+    term.appendChild(line);
+    while (term.children.length > 50) term.removeChild(term.firstChild);
+    term.scrollTop = term.scrollHeight;
+  }
+
+  function appendTermText(txt, color) {
+    const term = $("ws-term");
+    if (!term) return;
+    const line = document.createElement("div");
+    line.className = "ws-term-line";
+    if (color) line.style.color = color;
+    line.textContent = txt;
+    term.appendChild(line);
+    while (term.children.length > 50) term.removeChild(term.firstChild);
+    term.scrollTop = term.scrollHeight;
   }
 
   function pushHistory(color, title) {
@@ -429,18 +490,33 @@ html, body { margin: 0; padding: 2px; background: transparent;
       let opened = false;
       try { ws = new WebSocket(WS_URL); } catch (e) { reject(e); return; }
       ws.binaryType = "arraybuffer";
-      ws.onopen = () => { opened = true; resolve(); };
+      ws.onopen = () => {
+        opened = true;
+        if ($("term-status")) { $("term-status").textContent = "ACTIVO"; $("term-status").style.color = "#10B981"; }
+        appendTermText(`[WS] Handshake WebSocket OK: conectado a ${WS_URL}`, "#10B981");
+        resolve();
+      };
       ws.onmessage = (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
         if (d.status === "OK") render(d);
-        else if (d.status === "READY") $("d-dev").textContent = d.device;
-        else if (d.status === "SILENCE") {
+        else if (d.status === "READY") {
+          $("d-dev").textContent = d.device;
+          appendTermText(`[READY] Modelo emotion2vec+ Large listo en ${d.device}`, "#38BDF8");
+        } else if (d.status === "SILENCE") {
           $("ts").textContent = `Silencio detectado · ventana #${d.window}`;
           pushHistory("#E7DDD4", `${d.timestamp} silencio`);
-        } else if (d.status === "ERROR") setMsg("Error de inferencia en el servidor: " + d.message);
+          appendTermText(`[${d.timestamp}] [VAD] Silencio detectado en ventana #${d.window} (RMS < 0.004)`, "#8F7D74");
+        } else if (d.status === "ERROR") {
+          setMsg("Error de inferencia en el servidor: " + d.message);
+          appendTermText(`[ERROR] Inferencia fallida: ${d.message}`, "#EF4444");
+        }
       };
-      ws.onerror = () => { if (!opened) reject(new Error("WS")); };
+      ws.onerror = () => {
+        if (!opened) reject(new Error("WS"));
+        if ($("term-status")) { $("term-status").textContent = "ERROR"; $("term-status").style.color = "#EF4444"; }
+      };
       ws.onclose = () => {
+        if ($("term-status")) { $("term-status").textContent = "DESCONECTADO"; $("term-status").style.color = "#8F7D74"; }
         if (streaming) {
           stop(false);
           setBadge("Conexión perdida", "error");
@@ -452,12 +528,14 @@ html, body { margin: 0; padding: 2px; background: transparent;
 
   async function start() {
     $("btn").disabled = true; setMsg("Conectando con el servidor y solicitando el micrófono…");
+    appendTermText("[SISTEMA] Iniciando handshake WebSocket y captura de audio...", "#F59E0B");
     try {
       await connect();
     } catch (e) {
       $("btn").disabled = false;
       setBadge("Servidor no disponible", "error");
-      setMsg(`No se pudo conectar a ${WS_URL}. Inicia el servidor con: python src/websocket_server.py`);
+      setMsg(`No se pudo conectar a ${WS_URL}. Inicia el servidor con: uv run python src/websocket_server.py`);
+      appendTermText(`[ERROR] No se pudo conectar a ${WS_URL}`, "#EF4444");
       return;
     }
     try {
@@ -470,6 +548,7 @@ html, body { margin: 0; padding: 2px; background: transparent;
       else if (e.name === "NotAllowedError") setMsg("Permiso de micrófono denegado. Haz clic en el candado de la barra de direcciones y permite el micrófono.");
       else if (e.name === "NotFoundError") setMsg("No se encontró ningún micrófono conectado.");
       else setMsg("No se pudo iniciar el micrófono: " + (e.message || e.name));
+      appendTermText(`[MIC:ERROR] ${e.message || e.name}`, "#EF4444");
       return;
     }
     streaming = true; sentSamples = 0; latencies = [];
@@ -477,13 +556,19 @@ html, body { margin: 0; padding: 2px; background: transparent;
     $("btn").disabled = false; $("btn").textContent = "Detener Streaming"; $("btn").classList.add("stop");
     setBadge("Transmitiendo en vivo", "live");
     setMsg("Enviando audio a 16 kHz. El primer veredicto aparece tras 3 s de audio.");
+    appendTermText("[STREAM] Captura activa: tramas de 250ms PCM Float32 enviadas", "#10B981");
   }
 
   function stop(userAction = true) {
     streaming = false; stopAudio();
     try { if (ws && ws.readyState <= 1) ws.close(); } catch (e) {}
     $("btn").textContent = "Iniciar Streaming en Vivo"; $("btn").classList.remove("stop");
-    if (userAction) { setBadge("Detenido", ""); setMsg("Transmisión finalizada."); }
+    if (userAction) {
+      setBadge("Detenido", "");
+      setMsg("Transmisión finalizada.");
+      appendTermText("[SISTEMA] Transmisión detenida por el usuario.", "#8F7D74");
+      if ($("term-status")) { $("term-status").textContent = "DETENIDO"; $("term-status").style.color = "#8F7D74"; }
+    }
   }
 
   $("btn").onclick = () => (streaming ? stop(true) : start());

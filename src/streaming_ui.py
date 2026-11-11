@@ -244,8 +244,8 @@ html, body { margin: 0; padding: 2px; background: transparent;
     <div id="bars"></div>
 
     <div class="model-specs-grid">
-      <div class="spec-box"><div class="spec-label">Backbone</div><div class="spec-value">emotion2vec+</div><div class="spec-sub">315.0M params</div></div>
-      <div class="spec-box"><div class="spec-label">Inferencia</div><div class="spec-value mono" id="d-lat">--- ms</div><div class="spec-sub">por ventana</div></div>
+      <div class="spec-box"><div class="spec-label">Backbone</div><div class="spec-value">emotion2vec+</div><div class="spec-sub" id="d-params">— params</div></div>
+      <div class="spec-box"><div class="spec-label">Inferencia</div><div class="spec-value mono" id="d-lat">--- ms</div><div class="spec-sub" id="d-fwd">por ventana</div></div>
       <div class="spec-box"><div class="spec-label">VRAM</div><div class="spec-value mono" id="d-vram">—</div><div class="spec-sub">torch.cuda</div></div>
       <div class="spec-box"><div class="spec-label">Dispositivo</div><div class="spec-value mono" id="d-dev">—</div><div class="spec-sub" id="d-gpu">—</div></div>
     </div>
@@ -417,6 +417,7 @@ html, body { margin: 0; padding: 2px; background: transparent;
     $("s-avg").textContent = avg.toFixed(0) + " ms";
     $("s-last").textContent = `última: ${d.latency_ms} ms`;
     $("d-lat").textContent = d.latency_ms.toFixed(0) + " ms";
+    if (d.model_forward_ms != null) $("d-fwd").textContent = `modelo: ${d.model_forward_ms.toFixed(0)} ms`;
     $("d-dev").textContent = d.device === "cpu" ? "CPU" : d.device;
     $("d-gpu").textContent = d.device === "cpu" ? "Procesador" : d.gpu_name.replace("NVIDIA GeForce ", "");
     $("d-vram").textContent = d.device === "cpu" ? "n/a" : d.vram_mb.toFixed(0) + " MiB";
@@ -480,7 +481,8 @@ html, body { margin: 0; padding: 2px; background: transparent;
         if (d.status === "OK") render(d);
         else if (d.status === "READY") {
           $("d-dev").textContent = d.device;
-          appendTermText(`[READY] Modelo emotion2vec+ Large listo en ${d.device}`, "#38BDF8");
+          if (d.params_str) $("d-params").textContent = `${d.params_str} · ${d.dtype}`;
+          appendTermText(`[READY] Modelo emotion2vec+ Large listo en ${d.device} | ${d.params_str || "?"} | ${d.dtype || "?"}`, "#38BDF8");
         } else if (d.status === "SILENCE") {
           $("ts").textContent = `Silencio detectado · ventana #${d.window}`;
           pushHistory("#E7DDD4", `${d.timestamp} silencio`);

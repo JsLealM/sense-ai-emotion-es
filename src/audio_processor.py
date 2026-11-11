@@ -1,6 +1,6 @@
 """
 Módulo de Procesamiento e Inspección de Archivos de Audio.
-Soporta formatos WAV, MP3, M4A, OGG y FLAC, normalizando a 16kHz mono para W2V-BERT Emotion ES.
+Soporta formatos WAV, MP3, M4A, OGG y FLAC, normalizando a 16 kHz mono, el formato de entrada de emotion2vec+.
 Incorpora soporte nativo con soundfile y fallback automático con scipy.io.wavfile / wave.
 """
 
@@ -105,7 +105,7 @@ def convert_to_wav_16k_mono(input_path: str, output_path: str = None) -> str:
         cmd = [
             "ffmpeg", "-y", "-i", input_path,
             "-ac", "1",           # Forzar canal mono
-            "-ar", "16000",       # Forzar 16000 Hz requerido por W2V-BERT
+            "-ar", "16000",       # Forzar 16000 Hz, frecuencia con la que se entrenó emotion2vec+
             "-c:a", "pcm_s16le",  # PCM 16-bit estándar
             output_path
         ]

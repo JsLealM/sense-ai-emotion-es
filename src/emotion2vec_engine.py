@@ -1,5 +1,5 @@
 """
-Módulo de Inferencia para emotion2vec+ Large (Alibaba / Interspeech 2024).
+Módulo de Inferencia para emotion2vec+ Large (emotion2vec / FunASR, arXiv:2312.15185).
 Modelo fundacional auto-supervisado para Reconocimiento de Emociones en el Habla (SER).
 Procesa audio crudo a 16 kHz (100% acústico, cero multimodal) y clasifica en 9 estados emocionales.
 Compatible con PyTorch NVIDIA CUDA y CPU.
@@ -68,6 +68,88 @@ def unload_emotion2vec_model():
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+# Capas convolucionales del extractor de características de Data2Vec 2.0 (kernel, stride),
+# tomadas de feature_encoder_spec en el config.yaml del modelo:
+# [(512, 10, 5)] + [(512, 3, 2)] * 4 + [(512, 2, 2)] + [(512, 2, 2)]
+_CNN_SPEC = [(10, 5)] + [(3, 2)] * 4 + [(2, 2)] * 2
+
+
+def cnn_output_frames(num_samples: int) -> int:
+    """Número de frames que produce la CNN para una señal de num_samples muestras (≈ 50 por segundo)."""
+    length = int(num_samples)
+    for kernel, stride in _CNN_SPEC:
+        length = (length - kernel) // stride + 1
+        if length <= 0:
+            return 0
+    return length
+
+
+def get_model_info(model: Any) -> Dict[str, Any]:
+    """
+    Inspecciona el modelo cargado y devuelve datos medidos, no declarados:
+    número real de parámetros, tipo de dato, dispositivo y bloques Transformer.
+    El resultado se guarda en el propio objeto para no recalcularlo.
+    """
+    cached = getattr(model, "_auravoice_info", None)
+    if cached is not None:
+        return cached
+
+    net = getattr(model, "model", model)
+    params = list(net.parameters()) if hasattr(net, "parameters") else []
+    total = sum(p.numel() for p in params)
+    first = params[0] if params else None
+    # El decoder de Data2Vec solo se usa en el preentrenamiento (predicción enmascarada): no viene en el
+    # checkpoint de Hugging Face ni participa en extract_features(). Se excluye del conteo de inferencia.
+    decoder = 0
+    if hasattr(net, "named_parameters"):
+        decoder = sum(p.numel() for n, p in net.named_parameters() if ".decoder." in f".{n}")
+    used = total - decoder
+
+    main_blocks, prenet_blocks = set(), set()
+    if hasattr(net, "named_parameters"):
+        for name, _ in net.named_parameters():
+            parts = name.split(".")
+            if "blocks" in parts:
+                idx = parts[parts.index("blocks") + 1]
+                if "context_encoder" in parts:
+                    prenet_blocks.add(idx)
+                else:
+                    main_blocks.add(idx)
+
+    dtype = str(first.dtype).replace("torch.", "") if first is not None else "desconocido"
+    info = {
+        "params": used,
+        "params_str": f"{used / 1e6:.1f}M params",
+        "params_in_memory": total,
+        "params_decoder_unused": decoder,
+        "dtype": dtype,
+        "dtype_label": {"float32": "FP32", "float16": "FP16", "bfloat16": "BF16"}.get(dtype, dtype),
+        "device": str(first.device) if first is not None else "desconocido",
+        "transformer_blocks": len(main_blocks) + len(prenet_blocks),
+        "prenet_blocks": len(prenet_blocks),
+        "main_blocks": len(main_blocks),
+        "weights_mb": round(sum(p.numel() * p.element_size() for p in params) / (1024 ** 2), 1),
+    }
+    try:
+        model._auravoice_info = info
+    except Exception:
+        pass
+    return info
+
+
+def get_loaded_model_info() -> Optional[Dict[str, Any]]:
+    """Datos reales del primer modelo ya cargado en memoria, o None si aún no se ha cargado ninguno."""
+    for model in _E2V_CACHE.values():
+        return get_model_info(model)
+    return None
+
+
+def _sync(device: str):
+    """Espera a que la GPU termine el trabajo encolado (CUDA es asíncrono) antes de leer el reloj."""
+    if HAS_TORCH and "cuda" in str(device) and torch.cuda.is_available():
+        torch.cuda.synchronize()
 
 
 def find_local_emotion2vec_snapshot() -> Optional[str]:
@@ -149,14 +231,35 @@ def run_emotion2vec_inference(
     """
     Ejecuta inferencia acústica optimizada con emotion2vec+ Large:
     - Previene OOM en audios de media y larga duración (> 8s) mediante agregación temporal
-      por ventaneo continuo O(1) de memoria VRAM (Peak VRAM < 850 MiB).
+      por ventaneo: la memoria por ventana no depende de la duración del audio.
     - Para audios cortos (<= 8s), realiza inferencia global directa y crono-análisis.
     - Mapea a las 9 clases oficiales en español y modelo circunflejo de Russell 2D.
     """
     import soundfile as sf
     import tempfile
 
+    is_cuda_run = HAS_TORCH and "cuda" in str(device) and torch.cuda.is_available()
+    if is_cuda_run:
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
     t_start = time.perf_counter()
+
+    # Contadores medidos de las pasadas del modelo (forward) y de las copias CPU <-> GPU
+    model_stats = {"passes": 0, "model_s": 0.0, "h2d_bytes": 0, "d2h_bytes": 0}
+
+    def timed_generate(path: str, num_samples: int):
+        """Llama al modelo midiendo solo el tiempo del forward, con sincronización CUDA."""
+        _sync(device)
+        t0 = time.perf_counter()
+        with silence_stdio():
+            res = model.generate(path, output_dir=None, granularity="utterance", disable_pbar=True)
+        _sync(device)
+        model_stats["model_s"] += time.perf_counter() - t0
+        model_stats["passes"] += 1
+        # Ida: la forma de onda float32. Vuelta: 9 probabilidades + embeddings [T, 1024] float32
+        model_stats["h2d_bytes"] += int(num_samples) * 4
+        model_stats["d2h_bytes"] += 9 * 4 + cnn_output_frames(num_samples) * 1024 * 4
+        return res
 
     # 1. Metadatos y conversión a WAV 16k mono
     meta_audio = get_audio_metadata(audio_path)
@@ -198,8 +301,7 @@ def run_emotion2vec_inference(
                 sf.write(tmp_chunk_path, chunk, sr)
 
                 try:
-                    with silence_stdio():
-                        c_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance", disable_pbar=True)
+                    c_res = timed_generate(tmp_chunk_path, len(chunk))
                     c_item = c_res[0] if c_res else {}
                     if labels_ref is None and "labels" in c_item:
                         labels_ref = c_item["labels"]
@@ -254,8 +356,7 @@ def run_emotion2vec_inference(
         # Audio corto (<= 8.0s): inferencia global directa
         with torch.inference_mode():
             try:
-                with silence_stdio():
-                    raw_res = model.generate(wav_path, output_dir=None, granularity="utterance", disable_pbar=True)
+                raw_res = timed_generate(wav_path, total_samples)
             except Exception as exc:
                 if os.path.exists(wav_path) and wav_path != audio_path:
                     try: os.remove(wav_path)
@@ -288,8 +389,7 @@ def run_emotion2vec_inference(
                     sf.write(tmp_chunk_path, chunk, sr)
 
                     try:
-                        with silence_stdio():
-                            chunk_res = model.generate(tmp_chunk_path, output_dir=None, granularity="utterance", disable_pbar=True)
+                        chunk_res = timed_generate(tmp_chunk_path, len(chunk))
                         c_item = chunk_res[0] if chunk_res else {}
                         c_scores = c_item.get("scores", [])
                         if c_scores:
@@ -408,44 +508,62 @@ def run_emotion2vec_inference(
         "segments": segments
     }
 
+    _sync(device)
     t_end = time.perf_counter()
     latency_sec = t_end - t_start
 
-    # Limpieza de archivo temporal WAV
+    peak_vram_mb = None
+    allocated_vram_mb = None
+    if is_cuda_run:
+        peak_vram_mb = round(torch.cuda.max_memory_allocated() / (1024 ** 2), 1)
+        allocated_vram_mb = round(torch.cuda.memory_allocated() / (1024 ** 2), 1)
+
+    # Limpieza del WAV temporal
     if os.path.exists(wav_path) and wav_path != audio_path:
         try: os.remove(wav_path)
         except: pass
 
-    # Telemetría CUDA
-    cuda_telemetry = get_cuda_status() if "cuda" in device else None
+    model_info = get_model_info(model)
+    cuda_telemetry = get_cuda_status() if is_cuda_run else None
 
-    # Limpieza de archivo temporal
-    if os.path.exists(wav_path) and wav_path != audio_path:
-        try: os.remove(wav_path)
-        except: pass
+    # Consistencia temporal: fracción de ventanas que coinciden con la emoción global
+    if segments:
+        agree = sum(1 for seg in segments if seg["emotion"] == predominant["categoria"])
+        window_agreement_pct = round(agree / len(segments) * 100, 1)
+    else:
+        window_agreement_pct = None
 
-    # Telemetría CUDA
-    cuda_telemetry = get_cuda_status() if "cuda" in device else None
+    model_ms = model_stats["model_s"] * 1000
+    total_ms = latency_sec * 1000
 
     return {
         "status": "EXITOSA",
         "error_message": None,
         "model_id": "emotion2vec/emotion2vec_plus_large",
         "backbone": "emotion2vec+ Large (Data2Vec 2.0)",
-        "num_params_str": "315.0M params",
-        "num_classes": 9,
+        "model_info": model_info,
+        "num_params": model_info["params"],
+        "num_params_str": model_info["params_str"],
+        "num_classes": len(emotion_scores),
         "classes_names": list(emotion_scores.keys()),
         "parsed_result": parsed_result,
         "timeline_result": timeline_result,
         "metrics": {
             "latency_seconds": round(latency_sec, 4),
-            "latency_ms": round(latency_sec * 1000, 2),
+            "latency_ms": round(total_ms, 2),
+            "model_forward_ms": round(model_ms, 2),
+            "host_overhead_ms": round(max(0.0, total_ms - model_ms), 2),
+            "forward_passes": model_stats["passes"],
+            "h2d_bytes": model_stats["h2d_bytes"],
+            "d2h_bytes": model_stats["d2h_bytes"],
             "audio_duration_seconds": duration,
             "real_time_factor_rtf": round(latency_sec / max(0.01, duration), 3),
             "speedup_vs_realtime": f"{round(duration / max(0.001, latency_sec), 1)}x más rápido que tiempo real",
-            "vram_stats": {"status": "Activo"},
-            "device_used": device,
-            "is_cuda": "cuda" in device
+            "vram_stats": {"peak_mb": peak_vram_mb, "allocated_mb": allocated_vram_mb},
+            "window_agreement_pct": window_agreement_pct,
+            "device_used": model_info["device"],
+            "precision": model_info["dtype_label"],
+            "is_cuda": "cuda" in model_info["device"]
         },
         "audio_metadata": meta_audio,
         "cuda_telemetry": cuda_telemetry

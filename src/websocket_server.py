@@ -39,7 +39,7 @@ ROOT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference  # noqa: E402
+from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference, get_model_info  # noqa: E402
 
 # El registro raíz queda en WARNING para que FunASR no imprima cada capa al cargar el modelo;
 # solo el logger propio del servidor muestra mensajes INFO.
@@ -121,6 +121,9 @@ def build_payload(result: dict, window_index: int, rms: float, queue_ms: float) 
         "device": DEVICE,
         "gpu_name": torch.cuda.get_device_name(0) if "cuda" in DEVICE else "CPU",
         "vram_mb": gpu_memory_mb(),
+        "vram_peak_mb": metrics["vram_stats"].get("peak_mb"),
+        "model_forward_ms": metrics["model_forward_ms"],
+        "precision": metrics["precision"],
         "timestamp": time.strftime("%H:%M:%S"),
     }
 
@@ -134,9 +137,11 @@ async def handler(websocket):
     new_samples = 0          # Muestras recibidas desde la última inferencia
     window_index = 0
 
+    info = get_model_info(model)
     await websocket.send(json.dumps({
-        "status": "READY", "device": DEVICE,
+        "status": "READY", "device": info["device"],
         "window_sec": WINDOW_SEC, "stride_sec": STRIDE_SEC,
+        "params_str": info["params_str"], "dtype": info["dtype_label"],
     }))
 
     try:

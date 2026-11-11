@@ -1,6 +1,6 @@
 """
-Script de prueba de inferencia real con emotion2vec+ Large (Interspeech 2024 SOTA).
-Valida la carga del modelo en GPU CUDA, la clasificación en las 9 categorías y el consumo de VRAM acotado.
+Script de prueba de inferencia real con emotion2vec+ Large (Hugging Face: emotion2vec/emotion2vec_plus_large).
+Valida la carga del modelo, la clasificación en las 9 categorías y mide parámetros, dtype, latencia y VRAM.
 Ejecutar con: python tests/test_inference.py [ruta_opcional_audio] [--device cuda:0|cpu]
 """
 
@@ -11,7 +11,7 @@ import argparse
 # Agregar directorio raíz al PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference
+from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference, get_model_info
 
 
 def run_test(audio_path: str = None, device: str = "cuda:0"):
@@ -31,13 +31,17 @@ def run_test(audio_path: str = None, device: str = "cuda:0"):
 
     print(f"\n[1] Archivo de audio de prueba: {audio_path}")
     print(f"[2] Dispositivo objetivo:         {device}")
-    print(f"[3] Arquitectura del Modelo:      Data2Vec 2.0 (315.0M params, Interspeech 2024 SOTA)")
 
     # 2. Cargar modelo
     print("\n[4] Cargando pesos de emotion2vec+ Large en GPU...")
     try:
         model = load_emotion2vec_model(device=device)
+        info = get_model_info(model)
         print("    [OK] Modelo cargado correctamente.")
+        print(f"    Parámetros usados en inferencia: {info['params']:,} ({info['params_str']})")
+        print(f"    Total en memoria: {info['params_in_memory']:,} (incluye decoder de preentrenamiento sin usar: {info['params_decoder_unused']:,})")
+        print(f"    dtype / dispositivo:  {info['dtype']} / {info['device']}")
+        print(f"    Bloques Transformer:  {info['transformer_blocks']} ({info['prenet_blocks']} prenet + {info['main_blocks']})")
     except Exception as exc:
         print(f"    [ERROR] Error cargando modelo: {exc}")
         sys.exit(1)
@@ -75,16 +79,19 @@ def run_test(audio_path: str = None, device: str = "cuda:0"):
     print("-" * 70)
     print(f"Dispositivo utilizado:   {metrics['device_used']}")
     print(f"Latencia total:          {metrics['latency_ms']} ms ({metrics['latency_seconds']} s)")
+    print(f"Forward del modelo:      {metrics['model_forward_ms']} ms en {metrics['forward_passes']} pasada(s)")
+    print(f"Trabajo CPU fuera:       {metrics['host_overhead_ms']} ms")
+    print(f"Entrada al modelo:       {metrics['h2d_bytes']} bytes | salida: {metrics['d2h_bytes']} bytes (copias CPU<->GPU si es cuda)")
     print(f"Duración del audio:      {metrics['audio_duration_seconds']} s")
     print(f"Real-Time Factor (RTF):  {metrics['real_time_factor_rtf']}")
     print(f"Velocidad relativa:      {metrics['speedup_vs_realtime']}")
 
     vram = metrics.get("vram_stats", {})
-    print(f"VRAM Pico en inferencia: {vram.get('peak_mb', 0)} MB")
-    print(f"VRAM Asignada:           {vram.get('allocated_mb', 0)} MB")
+    print(f"VRAM pico en inferencia: {vram.get('peak_mb')} MiB")
+    print(f"VRAM asignada al final:  {vram.get('allocated_mb')} MiB")
 
     print("\n" + "=" * 70)
-    print("[OK] TEST COMPLETADO CON ÉXITO: emotion2vec+ Large operando en GPU NVIDIA.")
+    print(f"[OK] TEST COMPLETADO: emotion2vec+ Large operando en {metrics['device_used']} ({metrics['precision']}).")
     print("=" * 70)
 
 

@@ -7,7 +7,7 @@ torchaudio==2.8.0
 # Motor del modelo emotion2vec+ Large (carga e inferencia vía FunASR / Hugging Face Hub)
 funasr>=1.2.0
 
-# Hugging Face Transformers para W2V-BERT Emotion ES
+# Hugging Face Hub para descargar los pesos de emotion2vec+
 transformers>=4.40.0
 huggingface-hub>=0.23.0
 safetensors>=0.4.0
@@ -19,6 +19,9 @@ numpy<2.0.0
 
 # Streaming continuo en tiempo real (servidor WebSocket asíncrono)
 websockets>=13.0
+
+# Telemetría real de CPU/RAM en la interfaz
+psutil>=5.9.0
 
 # Interfaz gráfica interactiva y evaluación experimental
 streamlit>=1.35.0

@@ -44,10 +44,10 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 
-from src.cuda_monitor import get_cuda_status, verify_model_device
+from src.cuda_monitor import get_cuda_status
 from src.audio_processor import get_audio_metadata, convert_to_wav_16k_mono, load_audio_array_16k
 from src.result_parser import parse_emotion_probabilities, ETHICAL_DISCLAIMER, EMOTION_COLORS
-from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference
+from src.emotion2vec_engine import load_emotion2vec_model, run_emotion2vec_inference, get_loaded_model_info
 from src.streaming_ui import render_streaming_tab
 from src.system_telemetry import get_system_cpu_usage, generate_terminal_logs, generate_decision_reasoning_logs
 from src.audio_telemetry import extract_waveform_bars
@@ -857,8 +857,8 @@ if "cfg_stride_sec" not in st.session_state:
 @st.cache_resource(show_spinner=False)
 def get_cached_emotion2vec(dev_choice: str):
     """
-    Carga y mantiene en memoria los pesos de emotion2vec+ Large (315.0M params).
-    Optimizado para ejecución paralela en GPU NVIDIA CUDA con peak VRAM acotado en ~750 MiB.
+    Carga una sola vez emotion2vec+ Large en el dispositivo pedido y lo reutiliza entre interacciones.
+    El número de parámetros, el dtype y la VRAM se miden después con get_model_info().
     """
     return load_emotion2vec_model(device=dev_choice)
 
@@ -874,8 +874,15 @@ clean_gpu_name = (
     .replace(" GPU", "")
     .strip()
     if is_cuda_avail
-    else f"{system_cpu['cpu_count']} Cores SIMD"
+    else f"CPU · {system_cpu['cpu_count']} hilos"
 )
+
+# Datos reales del modelo si ya está cargado (None antes de la primera inferencia)
+loaded_model_info = get_loaded_model_info()
+precision_label = loaded_model_info["dtype_label"] if loaded_model_info else "—"
+params_label = loaded_model_info["params_str"] if loaded_model_info else "se mide al cargar"
+torch_version_label = cuda_info.get("pytorch_version", "N/D")
+cuda_version_label = cuda_info.get("cuda_version") or "N/D"
 
 
 # ==============================================================================
@@ -885,7 +892,7 @@ cuda_pill_class = "cuda-active" if is_cuda_avail else ""
 cuda_pill_text = (
     f"• CUDA Stream Active: Device {cuda_info.get('current_device', 0)} [{detected_gpu_name}]"
     if is_cuda_avail
-    else f"• High-Performance CPU Engine: {system_cpu['cpu_count']} Cores Active"
+    else f"• CPU: {system_cpu['cpu_count']} hilos lógicos"
 )
 
 navbar_html = f"""
@@ -1003,14 +1010,14 @@ with tab_live:
 
     with src_col2:
         with st.container(border=True):
-            render_html("""
+            render_html(f"""
             <div class="card-title-row" style="margin-bottom: 12px;">
                 <div class="card-title">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
                     Reproducción & Inferencia GPU
                 </div>
                 <div class="confidence-pill" style="background:#ECFDF5; color:#065F46; border-color:#A7F3D0;">
-                    PyTorch CUDA FP16
+                    PyTorch {'CUDA ' + cuda_version_label if is_cuda_avail else 'CPU'} · {precision_label}
                 </div>
             </div>
             """)
@@ -1030,10 +1037,10 @@ with tab_live:
                     st.warning("Selecciona o sube un archivo de voz antes de ejecutar la inferencia.")
                 else:
                     status_placeholder = st.empty()
-                    status_placeholder.markdown("""
+                    status_placeholder.markdown(f"""
                     <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:10px; padding:10px 16px; font-size:0.82rem; color:#C2410C; display:flex; align-items:center; gap:8px; margin-top:8px;">
                         <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#EA580C;"></span>
-                        Procesando tensores en silicio NVIDIA CUDA (FP16)...
+                        Ejecutando emotion2vec+ en {'GPU (cuda:0)' if is_cuda_avail else 'CPU'}...
                     </div>
                     """, unsafe_allow_html=True)
                     try:
@@ -1047,20 +1054,19 @@ with tab_live:
                             st.session_state.last_parsed_result = inf_res["parsed_result"]
                             st.session_state.last_timeline_result = inf_res.get("timeline_result")
                             st.session_state.last_inference_meta = {
-                                "latency_ms": inf_res["metrics"]["latency_ms"],
-                                "device_used": inf_res["metrics"]["device_used"],
+                                **inf_res["metrics"],
                                 "predominant": inf_res["parsed_result"]["predominant_emotion"],
                                 "confidence": f"{inf_res['parsed_result']['predominant_percent']}%",
                                 "backbone": "emotion2vec+ Large (Data2Vec 2.0)",
-                                "params": "315.0M params",
-                                "classes_count": 9,
-                                "model_id": "emotion2vec/emotion2vec_plus_large"
+                                "params": inf_res["num_params_str"],
+                                "classes_count": inf_res["num_classes"],
+                                "model_id": inf_res["model_id"]
                             }
                             # Cargar array para waveform
                             arr, _ = load_audio_array_16k(audio_target_path)
                             st.session_state.last_audio_array = arr
                             status_placeholder.empty()
-                            st.success("Inferencia completada con éxito en GPU NVIDIA (emotion2vec+ Large — 9 clases).")
+                            st.success(f"Inferencia completada en {inf_res['metrics']['device_used']} ({inf_res['metrics']['precision']}) — {inf_res['metrics']['latency_ms']} ms.")
                         else:
                             status_placeholder.empty()
                             st.error(f"Error en inferencia: {inf_res.get('error_message')}")
@@ -1071,6 +1077,13 @@ with tab_live:
     # --------------------------------------------------------------------------
     # TARJETA 2: ONDAS DE AUDIO CAPTURADO Y ESPECTRO (WAVEFORM & SPECTRUM)
     # --------------------------------------------------------------------------
+    # El modelo pudo cargarse en esta misma ejecución (primera inferencia): refrescar sus datos medidos
+    if loaded_model_info is None:
+        loaded_model_info = get_loaded_model_info()
+        if loaded_model_info:
+            precision_label = loaded_model_info["dtype_label"]
+            params_label = loaded_model_info["params_str"]
+
     waveform_data = extract_waveform_bars(st.session_state.last_audio_array, num_bars=50)
 
     # Mapeo de gradientes dinámicos para que la onda cambie de color según la emoción capturada
@@ -1108,7 +1121,7 @@ with tab_live:
         <div class="waveform-header">
             <div class="waveform-tags">
                 {waveform_status_tag}
-                <span class="tag-badge">Espectro: {waveform_data['mel_bands']} Mel-Bands</span>
+                <span class="tag-badge">Voz (pYIN): {waveform_data['vad_active_pct']} · F0 {waveform_data['f0_hz']} Hz</span>
             </div>
             <div class="waveform-metrics">
                 <div>NIVEL RMS <span class="metric-highlight" style="color:{detected_color};">{waveform_data['rms_db']} dB</span></div>
@@ -1120,7 +1133,7 @@ with tab_live:
         </div>
         <div class="waveform-footer">
             <div>Resolución Temporal: 20ms por trama convolucional</div>
-            <div>Latencia de Inferencia GPU: {st.session_state.last_inference_meta['latency_ms'] if st.session_state.last_inference_meta else '---'} ms</div>
+            <div>Latencia total: {st.session_state.last_inference_meta['latency_ms'] if st.session_state.last_inference_meta else '---'} ms · forward del modelo: {st.session_state.last_inference_meta.get('model_forward_ms', '---') if st.session_state.last_inference_meta else '---'} ms</div>
         </div>
     </div>
     """
@@ -1134,7 +1147,7 @@ with tab_live:
     # Especificaciones del modelo activo emotion2vec+ Large
     active_classes_count = 9
     active_backbone_name = "emotion2vec+ Large (Data2Vec 2.0)"
-    active_backbone_params = "315.0M params"
+    active_backbone_params = params_label
 
     # Datos actuales del modelo o estado inicial
     if st.session_state.last_parsed_result:
@@ -1223,18 +1236,18 @@ with tab_live:
                     <div class="spec-sub">{active_backbone_params}</div>
                 </div>
                 <div class="spec-box">
-                    <div class="spec-label">Inferencia GPU</div>
+                    <div class="spec-label">Latencia total</div>
                     <div class="spec-value">{latency_disp}</div>
-                    <div class="spec-sub">torch.cuda.sync</div>
+                    <div class="spec-sub">modelo: {st.session_state.last_inference_meta.get('model_forward_ms', '—') if st.session_state.last_inference_meta else '—'} ms</div>
                 </div>
                 <div class="spec-box">
                     <div class="spec-label">Precisión</div>
-                    <div class="spec-value">FP16</div>
-                    <div class="spec-sub">PyTorch CUDA</div>
+                    <div class="spec-value">{precision_label}</div>
+                    <div class="spec-sub">dtype de los pesos</div>
                 </div>
                 <div class="spec-box">
                     <div class="spec-label">Dispositivo</div>
-                    <div class="spec-value">{'cuda:0' if is_cuda_avail else 'CPU'}</div>
+                    <div class="spec-value">{loaded_model_info['device'] if loaded_model_info else ('cuda:0' if is_cuda_avail else 'cpu')}</div>
                     <div class="spec-sub">{clean_gpu_name}</div>
                 </div>
             </div>
@@ -1260,14 +1273,19 @@ with tab_live:
             v_used = round(cuda_live.get('vram_reserved_mb', cuda_info['vram_reserved_mb']) / 1024, 2)
             v_tot = round(cuda_live.get('vram_total_mb', cuda_info['vram_total_mb']) / 1024, 1)
             v_pct = round((v_used / max(0.1, v_tot)) * 100, 1)
-            gpu_load = cuda_live.get("gpu_utilization_percent", 0.0)
-            gpu_temp = cuda_live.get("gpu_temperature_c", 38.0)
-            gpu_peak = 94.7 if st.session_state.last_inference_meta else gpu_load
-            vram_display = f"VRAM: {v_used} / {v_tot} GB &nbsp;<span style='color:#38BDF8;'>{v_pct}%</span>"
-            gpu_util_display = f"GPU: <span style='color:#10B981; font-weight:800;'>{gpu_peak}%</span> (Peak) | Idle: {gpu_load}% | Temp: {gpu_temp}°C"
+            gpu_load = cuda_live.get("gpu_utilization_percent")
+            gpu_temp = cuda_live.get("gpu_temperature_c")
+            last_meta = st.session_state.last_inference_meta or {}
+            peak_vram = (last_meta.get("vram_stats") or {}).get("peak_mb")
+            vram_display = f"VRAM reservada: {v_used} / {v_tot} GB &nbsp;<span style='color:#38BDF8;'>{v_pct}%</span>"
+            gpu_util_display = (
+                f"nvidia-smi: {gpu_load if gpu_load is not None else 'N/D'}% uso | "
+                f"{gpu_temp if gpu_temp is not None else 'N/D'} °C | "
+                f"pico última inferencia: <span style='color:#10B981; font-weight:800;'>{peak_vram if peak_vram is not None else '—'} MiB</span>"
+            )
         else:
-            vram_display = f"RAM: {system_cpu['ram_used_gb']} / {system_cpu['ram_total_gb']} GB &nbsp;<span style='color:#38BDF8;'>{system_cpu['ram_percent']}%</span>"
-            gpu_util_display = f"CPU Core Util: {system_cpu['cpu_percent']}%"
+            vram_display = f"RAM: {system_cpu['ram_used_gb'] or 'N/D'} / {system_cpu['ram_total_gb'] or 'N/D'} GB &nbsp;<span style='color:#38BDF8;'>{system_cpu['ram_percent'] or 'N/D'}%</span>"
+            gpu_util_display = f"CPU: {system_cpu['cpu_percent'] if system_cpu['cpu_percent'] is not None else 'N/D'}%"
 
         if term_view == "Trazabilidad de Decisión (XAI)":
             pred_txt = parsed.get("predominant_emotion", "Standby") if st.session_state.last_parsed_result else "En espera"
@@ -1298,23 +1316,25 @@ with tab_live:
                 <span class="t-filter-pill active">3. RUSSELL 2D</span>
                 <span class="t-filter-pill active">4. SOFTMAX</span>
                 <span class="t-filter-pill active">5. VEREDICTO</span>
-                <span style="margin-left:auto; color:#34D399; font-size:0.68rem; font-weight:700;">Explainable AI (14 Pasos)</span>
+                <span style="margin-left:auto; color:#34D399; font-size:0.68rem; font-weight:700;">Datos medidos</span>
             </div>
             """
             footer_html = """
             <div class="terminal-footer">
-                <div>Modelo Explicativo: Russell Circumplex 2D</div>
-                <div>Trazabilidad: Cadena de Inferencia Fundamentada</div>
+                <div>Medidas de la señal + salidas del modelo</div>
+                <div>No es interpretabilidad interna del Transformer</div>
             </div>
             """
             logs = generate_decision_reasoning_logs(
                 parsed_result=st.session_state.last_parsed_result,
                 inference_meta=st.session_state.last_inference_meta,
-                audio_telemetry_meta=waveform_data
+                audio_telemetry_meta=waveform_data,
+                model_info=loaded_model_info,
+                timeline_result=st.session_state.last_timeline_result
             )
         else:
-            t_title = "AuraTerminal CUDA v12.4" if is_cuda_avail else "AuraTerminal CPU Multi-Core"
-            t_badge = f"Device: {cuda_info.get('current_device', 0)} [{clean_gpu_name}]" if is_cuda_avail else f"Host [{system_cpu['cpu_count']} Cores SIMD]"
+            t_title = f"AuraTerminal · CUDA {cuda_version_label}" if is_cuda_avail else "AuraTerminal · CPU"
+            t_badge = f"Device: {cuda_info.get('current_device', 0)} [{clean_gpu_name}]" if is_cuda_avail else f"Host [{system_cpu['cpu_count']} hilos]"
             strip_html = f"""
             <div class="terminal-stats-strip">
                 <div class="t-stat-item">
@@ -1335,19 +1355,20 @@ with tab_live:
                 <span class="t-filter-pill {'active' if t_filter=='CUDA' else ''}">CUDA</span>
                 <span class="t-filter-pill {'active' if t_filter=='CPU' else ''}">CPU</span>
                 <span class="t-filter-pill {'active' if t_filter=='WARN' else ''}">WARN</span>
-                <span style="margin-left:auto; color:#00E5FF; font-size:0.68rem;">PyTorch 2.6 CUDA</span>
+                <span style="margin-left:auto; color:#00E5FF; font-size:0.68rem;">PyTorch {torch_version_label}</span>
             </div>
             """
-            footer_html = """
+            footer_html = f"""
             <div class="terminal-footer">
-                <div>Modo: Inferencia en Silicio NVIDIA CUDA</div>
-                <div>Precisión: torch.float16 (FP16)</div>
+                <div>Modo: {'GPU NVIDIA CUDA' if is_cuda_avail else 'CPU'}</div>
+                <div>Precisión: {('torch.' + loaded_model_info['dtype']) if loaded_model_info else '—'} ({precision_label})</div>
             </div>
             """
             logs = generate_terminal_logs(
                 filter_tag=t_filter,
                 inference_meta=st.session_state.last_inference_meta,
-                current_device="cuda:0" if is_cuda_avail else "cpu"
+                current_device="cuda:0" if is_cuda_avail else "cpu",
+                model_info=loaded_model_info
             )
 
         logs_html_list = []
@@ -1503,7 +1524,7 @@ with tab_live:
 # PESTAÑA 3: BENCHMARK COMPUTACIONAL (CUDA VS CPU)
 # ==============================================================================
 with tab_bench:
-    render_html("""
+    render_html(f"""
     <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
         <div class="card-title-row">
             <div class="card-title">
@@ -1515,9 +1536,10 @@ with tab_bench:
             </div>
         </div>
         <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
-            Este módulo ejecuta la inferencia del modelo fundacional emotion2vec+ Large (Data2Vec 2.0, 315.0M params) de forma secuencial en silicio NVIDIA CUDA (FP16) 
-            y en la CPU (SIMD Float32) sobre el mismo archivo de audio para calcular empíricamente la aceleración por hardware (Speedup) 
-            y el Factor de Tiempo Real (RTF).
+            Ejecuta emotion2vec+ Large con el mismo audio en la GPU y en la CPU, con los mismos pesos y la misma precisión.
+            Antes de medir hace una corrida de calentamiento en cada dispositivo (inicialización de CUDA/cuDNN y caché).
+            Separa el tiempo del modelo (forward, medido entre torch.cuda.synchronize()) del trabajo en CPU fuera del modelo,
+            para ver la aceleración del cálculo paralelo y la del proceso completo (ley de Amdahl).
         </p>
     </div>
     """)
@@ -1535,60 +1557,50 @@ with tab_bench:
         st.caption(f"Audio de prueba: {os.path.basename(sample_file)} (Voz en español, 16.000 Hz Mono).")
 
     if btn_run_bench and os.path.exists(sample_file):
-        with st.spinner("Ejecutando inferencia en GPU CUDA y CPU para medir aceleración..."):
-            # 1. Ejecución CUDA si disponible
-            if is_cuda_avail:
-                m_cuda = get_cached_emotion2vec("cuda:0")
-                res_c = run_emotion2vec_inference(m_cuda, sample_file, device="cuda:0")
-            else:
-                res_c = {
-                    "metrics": {
-                        "latency_ms": 18.4,
-                        "latency_seconds": 0.0184,
-                        "real_time_factor_rtf": 0.007,
-                        "speedup_vs_realtime": "142.8x",
-                        "vram_stats": {"peak_mb": 770.0}
-                    },
-                    "parsed_result": {"predominant_emotion": "Neutral", "predominant_percent": 99.8}
-                }
+        if not is_cuda_avail:
+            st.warning("No hay GPU CUDA disponible en este equipo: solo se puede medir la CPU.")
+        with st.spinner("Midiendo inferencia en GPU y CPU (con calentamiento)..."):
+            runs = {}
+            devices = (["cuda:0"] if is_cuda_avail else []) + ["cpu"]
+            for dev in devices:
+                m_dev = get_cached_emotion2vec(dev)
+                run_emotion2vec_inference(m_dev, sample_file, device=dev)  # calentamiento, no se reporta
+                runs[dev] = run_emotion2vec_inference(m_dev, sample_file, device=dev)
 
-            # 2. Ejecución CPU
-            m_cpu = get_cached_emotion2vec("cpu")
-            res_cpu = run_emotion2vec_inference(m_cpu, sample_file, device="cpu")
-
-            compare_data = {
-                "Métrica / Parámetro": [
-                    "Dispositivo de Cómputo",
-                    "Latencia de Inferencia",
-                    "Factor de Tiempo Real (RTF)",
-                    "Aceleración vs Tiempo Real",
-                    "Consumo de Memoria",
-                    "Predicción Predominante"
-                ],
-                "NVIDIA CUDA (GPU)": [
-                    detected_gpu_name,
-                    f"{res_c['metrics']['latency_ms']} ms",
-                    str(res_c['metrics']['real_time_factor_rtf']),
-                    res_c['metrics']['speedup_vs_realtime'],
-                    f"{res_c['metrics']['vram_stats']['peak_mb']} MB (VRAM)",
-                    f"{res_c['parsed_result']['predominant_emotion']} ({res_c['parsed_result']['predominant_percent']}%)"
-                ],
-                "Procesador Central (CPU)": [
-                    f"{system_cpu['cpu_count']} Cores SIMD",
-                    f"{res_cpu['metrics']['latency_ms']} ms",
-                    str(res_cpu['metrics']['real_time_factor_rtf']),
-                    res_cpu['metrics']['speedup_vs_realtime'],
-                    f"{system_cpu['ram_used_gb']} GB (RAM del Sistema)",
-                    f"{res_cpu['parsed_result']['predominant_emotion']} ({res_cpu['parsed_result']['predominant_percent']}%)"
+            def col(res, dev):
+                mt = res["metrics"]
+                vram = mt["vram_stats"].get("peak_mb")
+                cpu_now = get_system_cpu_usage()
+                mem_txt = f"{vram} MiB VRAM pico" if "cuda" in dev else (
+                    f"{cpu_now['process_rss_gb']} GB RAM (proceso)" if cpu_now["process_rss_gb"] is not None else "N/D")
+                return [
+                    detected_gpu_name if "cuda" in dev else f"CPU · {system_cpu['cpu_count']} hilos",
+                    f"{mt['latency_ms']} ms",
+                    f"{mt['model_forward_ms']} ms ({mt['forward_passes']} pasada/s)",
+                    f"{mt['host_overhead_ms']} ms",
+                    str(mt["real_time_factor_rtf"]),
+                    mt["precision"],
+                    mem_txt,
+                    f"{res['parsed_result']['predominant_emotion']} ({res['parsed_result']['predominant_percent']}%)",
                 ]
-            }
+
+            compare_data = {"Métrica": [
+                "Dispositivo", "Latencia total", "Forward del modelo", "Trabajo en CPU fuera del modelo",
+                "Factor de tiempo real (RTF)", "Precisión", "Memoria", "Predicción",
+            ]}
+            if "cuda:0" in runs:
+                compare_data["GPU (cuda:0)"] = col(runs["cuda:0"], "cuda:0")
+            compare_data["CPU"] = col(runs["cpu"], "cpu")
             st.table(pd.DataFrame(compare_data))
 
-            lat_c = res_c["metrics"]["latency_seconds"]
-            lat_cpu = res_cpu["metrics"]["latency_seconds"]
-            if lat_c > 0:
-                speedup = round(lat_cpu / lat_c, 2)
-                st.success(f"**Resultado de Paralelismo:** CUDA ejecutó la inferencia **{speedup}x veces más rápido** que la CPU.")
+            if "cuda:0" in runs:
+                g, c = runs["cuda:0"]["metrics"], runs["cpu"]["metrics"]
+                sp_total = round(c["latency_ms"] / max(g["latency_ms"], 1e-6), 2)
+                sp_model = round(c["model_forward_ms"] / max(g["model_forward_ms"], 1e-6), 2)
+                st.success(f"**Proceso completo:** la GPU fue **{sp_total}x** más rápida que la CPU. "
+                           f"**Solo el modelo:** **{sp_model}x**.")
+                st.caption("La diferencia entre ambas cifras es el trabajo que sigue en CPU en los dos casos "
+                           "(ffmpeg, ventaneo, archivos temporales): limita la aceleración total (ley de Amdahl).")
 
 
 # ==============================================================================
@@ -1612,13 +1624,15 @@ with tab_config:
     with cfg_col1:
         st.markdown("#### Parámetros de Inferencia y Hardware")
         st.write(f"**Modelo:** `emotion2vec/emotion2vec_plus_large` (FunASR / Hugging Face)")
-        st.write(f"**Arquitectura:** `Data2Vec 2.0 Large (315.0M parámetros)`")
+        if loaded_model_info:
+            st.write(f"**Arquitectura:** `Data2Vec 2.0 · CNN 7 capas + {loaded_model_info['transformer_blocks']} bloques Transformer`")
+            st.write(f"**Parámetros (contados):** `{loaded_model_info['params']:,}` · **dtype:** `{loaded_model_info['dtype']}` · **pesos:** `{loaded_model_info['weights_mb']} MiB`")
+        else:
+            st.write("**Arquitectura:** `Data2Vec 2.0` (parámetros y dtype se miden al cargar el modelo en la primera inferencia)")
         st.write(f"**Dispositivo:** `{detected_gpu_name}`")
         st.write(f"**CUDA Runtime:** `{cuda_info.get('cuda_version', 'N/A')}`")
         st.write(f"**PyTorch:** `{cuda_info['pytorch_version']}`")
 
-        opt_fp16 = st.checkbox("Optimización FP16 (Media Precisión Tensor)", value=True, help="Reduce el uso de VRAM a ~770 MiB.")
-        opt_vad = st.checkbox("Segmentación Deslizante O(1) VRAM", value=True, help="Ventanas configurables con solapamiento temporal para crono-análisis.")
 
         def on_window_change():
             st.session_state.cfg_window_sec = float(st.session_state.cfg_window_slider)
@@ -1642,7 +1656,7 @@ with tab_config:
         > **Especificaciones del Motor:**
         > 1. **Ingesta Acústica Pura**: Procesamiento directo de formas de onda a 16.000 Hz Mono (Zero LLMs, Zero Whisper ASR).
         > 2. **Representaciones Latentes Data2Vec 2.0**: Extracción de embeddings temporales de alta resolución espacial.
-        > 3. **Gestión de Memoria Acotada**: Segmentación continua $O(1)$ en VRAM que previene desbordamientos de memoria en audios de cualquier duración.
+        > 3. **Memoria acotada por ventanas**: la atención crece con O(T²); al procesar ventanas de duración fija, la VRAM por ventana no depende de la duración total del audio.
         """)
         st.markdown(f'<div style="background:#FFFBEB; border:1px solid #FDE68A; padding:10px 14px; border-radius:8px; font-size:0.80rem; color:#92400E;">{ETHICAL_DISCLAIMER}</div>', unsafe_allow_html=True)
 
@@ -1650,11 +1664,11 @@ with tab_config:
 # ==============================================================================
 # FOOTER INFORMATIVO AURAVOICE
 # ==============================================================================
-footer_html = """
+footer_html = f"""
 <div class="auravoice-footer">
-    <div><b>AuraVoice Engine</b> Neural Acoustic Prosody & Latent Emotion Analysis v4.2</div>
-    <div>Buffer Latency: 22ms &nbsp;|&nbsp; Precision: FP16 PyTorch CUDA</div>
-    <div>© 2025 AuraVoice AI Systems</div>
+    <div><b>AuraVoice</b> · emotion2vec+ Large · Hugging Face</div>
+    <div>PyTorch {torch_version_label} &nbsp;|&nbsp; CUDA {cuda_version_label} &nbsp;|&nbsp; Precisión: {precision_label}</div>
+    <div>© 2026 AuraVoice · Código MIT</div>
 </div>
 """
 render_html(footer_html)

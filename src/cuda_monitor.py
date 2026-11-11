@@ -76,8 +76,8 @@ def get_cuda_status() -> Dict[str, Any]:
             "vram_allocated_mb": round(allocated_bytes / (1024 ** 2), 2),
             "vram_reserved_mb": round(reserved_bytes / (1024 ** 2), 2),
             "vram_free_mb": round(free_bytes / (1024 ** 2), 2),
-            "gpu_utilization_percent": 0.0,
-            "gpu_temperature_c": 0.0
+            "gpu_utilization_percent": None,  # None = nvidia-smi no disponible (no se inventa un valor)
+            "gpu_temperature_c": None
         })
 
         # Consulta en tiempo real a nivel de silicio mediante nvidia-smi

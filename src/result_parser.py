@@ -1,6 +1,6 @@
 """
 Módulo de Parseo e Interpretación de Resultados Emocionales.
-Modela y traduce las 9 categorías oficiales de emotion2vec/emotion2vec_plus_large (Interspeech 2024):
+Modela y traduce las 9 categorías oficiales de emotion2vec/emotion2vec_plus_large:
 Alegría, Tristeza, Enojo, Miedo, Disgusto, Neutral, Sorpresa, Otro y Neutro / Desc.
 Incorpora el Modelo Circunflejo de Russell (Valence & Arousal) y descriptores latentes.
 """

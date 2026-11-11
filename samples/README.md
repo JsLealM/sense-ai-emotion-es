@@ -1,6 +1,6 @@
 # Banco de Audios de Prueba (Samples)
 
-Este directorio contiene el conjunto de grabaciones de voz y muestras acústicas utilizadas para la evaluación, validación y benchmarking del sistema **AuraVoice** con los modelos fundacionales **emotion2vec+ Large** (315M params) y **W2V-BERT Emotion ES** (582M params).
+Este directorio contiene el conjunto de grabaciones de voz y muestras acústicas utilizadas para la evaluación, validación y benchmarking del sistema **AuraVoice** con el modelo **emotion2vec+ Large** (`emotion2vec/emotion2vec_plus_large`, ~300M según la model card, 162,1M contados en el checkpoint).
 
 ---
 
@@ -8,14 +8,16 @@ Este directorio contiene el conjunto de grabaciones de voz y muestras acústicas
 
 Estas grabaciones fueron incorporadas para evaluar la capacidad del modelo de discriminar entre diferentes polaridades de valencia y activación emocional tanto en **español** como en **inglés**:
 
-| Archivo | Idioma | Estado Emocional Objetivo | Formato / Tamaño | Fenómeno Acústico y Propósito de Evaluación |
-| :--- | :---: | :---: | :---: | :--- |
-| `alegria-entusiasmo.m4a` | Español (`es`) | **Alegría / Entusiasmo** | M4A (~201 KB) | Entonación ascendente, tempo ágil y alta energía espectral en frecuencias altas. Evalúa la detección de alta valencia (+V) y moderada-alta activación (+A). |
-| `neutro-calma.m4a` | Español (`es`) | **Neutro / Calma** | M4A (~222 KB) | Prosodia uniforme, pausas regulares y balance armónico sin modulación extrema. Evalúa la clasificación de neutralidad y serenidad acústica. |
-| `frustración-enojo.m4a` | Español (`es`) | **Frustración / Enojo** | M4A (~206 KB) | Modulación tensa, inflexiones cortantes y picos de intensidad vocal. Evalúa la detección de baja valencia (-V) y alta activación (+A). |
-| `happy-en.m4a` | Inglés (`en`) | **Happy / Joy** | M4A (~208 KB) | Tono brillante y variabilidad en $F_0$. Comprueba la capacidad de generalización multilingüe (cross-lingual) para alegría en inglés. |
-| `neutral-en.m4a` | Inglés (`en`) | **Neutral / Calm** | M4A (~202 KB) | Cadencia conversacional pausada y tono plano. Comprueba la estabilidad de la predicción neutral en inglés. |
-| `frustation-en.m4a` | Inglés (`en`) | **Frustration / Anger** | M4A (~222 KB) | Elevada energía prosódica con tensión en formantes vocales. Comprueba la discriminación de tensión acústica en inglés. |
+| Archivo | Idioma | Emoción actuada | Predicción medida (top 2) | ¿Acierta? |
+| :--- | :---: | :---: | :--- | :---: |
+| `alegria-entusiasmo.m4a` | Español | Alegría | Tristeza 36,6 % · Neutral 26,3 % (incierta) | ❌ |
+| `neutro-calma.m4a` | Español | Neutral | Tristeza 77,1 % · Neutral 20,3 % | ❌ |
+| `frustración-enojo.m4a` | Español | Enojo | Tristeza 45,0 % · Disgusto 19,9 % (incierta) | ❌ |
+| `happy-en.m4a` | Inglés | Alegría | Tristeza 48,2 % · Neutral 25,5 % (incierta) | ❌ |
+| `neutral-en.m4a` | Inglés | Neutral | Neutral 72,5 % · Tristeza 26,1 % | ✅ |
+| `frustation-en.m4a` | Inglés | Enojo | Tristeza 69,2 % · Neutral 17,1 % | ❌ |
+
+Medido el 10-nov-2026 en GPU (FP32) con `python tests/test_inference.py <archivo>`. Son grabaciones actuadas por el equipo con micrófono de portátil: el modelo tiende a clasificarlas como **Tristeza**, con confianza baja cuando se equivoca. Es el caso límite documentado en la sección 3 del README principal.
 
 ---
 
@@ -25,11 +27,11 @@ Archivos normalizados a 16.000 Hz PCM mono utilizados como línea base para medi
 
 | Archivo | Idioma | Formato | Duración | Propósito en el Benchmark |
 | :--- | :---: | :---: | :---: | :--- |
-| `sample_es.wav` | Español (`es`) | WAV (16 kHz Mono) | ~2.44 s | **Línea Base Principal**: Discurso formal en español (*"República de Colombia"*). Utilizado en la pestaña *Benchmark CUDA vs CPU* y en `tests/test_inference.py`. |
+| `sample_es.wav` | Español (`es`) | WAV (16 kHz Mono) | ~2.44 s | **Línea Base Principal**: Discurso formal en español (*"República de Colombia"*). Utilizado en la pestaña *Benchmark CUDA vs CPU* y en `tests/test_inference.py` (predicción medida: Tristeza 95,1 %). |
 | `sample_es.ogg` | Español (`es`) | OGG Vorbis | ~2.44 s | Validación de decodificación y remuestreo automático desde formatos comprimidos a 16 kHz PCM. |
-| `sample_en.wav` | Inglés (`en`) | WAV (16 kHz Mono) | ~7.18 s | Prueba de audio de media duración para validar agregación temporal por ventaneo continuo $O(1)$ sin desbordamiento de memoria VRAM. |
+| `sample_en.wav` | Inglés (`en`) | WAV (16 kHz Mono) | ~7.18 s | Audio de media duración: se procesa en 4 ventanas de 3 s y se promedian las probabilidades (predicción medida: Neutral 69,3 %). |
 | `sample_en.mp3` | Inglés (`en`) | MP3 | ~7.18 s | Verificación de compatibilidad con contenedores de compresión MPEG Layer-3. |
-| `sample_zh.wav` | Chino (`zh`) | WAV (16 kHz Mono) | ~5.62 s | Validación en el idioma nativo de pre-entrenamiento de los pesos base de Alibaba FunAudioLLM. |
+| `sample_zh.wav` | Chino (`zh`) | WAV (16 kHz Mono) | ~5.62 s | Prueba en otro idioma (predicción medida: Neutral 97,4 %). |
 | `sample_zh.mp3` | Chino (`zh`) | MP3 | ~5.62 s | Variante comprimida para evaluación de robustez del extractor acústico. |
 
 ---
@@ -45,10 +47,10 @@ Para utilizar cualquiera de estas muestras dentro de la interfaz gráfica intera
 2. En la pestaña **Sesión en Vivo (Análisis Emocional)**, localiza la tarjeta izquierda **Captura de Voz**.
 3. Selecciona la opción **Muestra Pregrabada**.
 4. En el menú desplegable, selecciona la grabación que desees evaluar (ej. `Grabación: alegria-entusiasmo.m4a`, `Grabación: neutro-calma.m4a` o `sample_es.wav`).
-5. Pulsa el botón **▶ Analizar Emoción en Audio** para observar:
-   * La forma de onda espectral coloreada según el estado capturado.
+5. Pulsa el botón **Ejecutar Inferencia de Emoción en Audio** para observar:
+   * La forma de onda coloreada según el estado capturado, con F0 y % de voz medidos (pYIN).
    * El desglose de probabilidades Softmax y el vector de Russell (Valencia / Activación).
-   * La telemetría de inferencia en milisegundos y el consumo de VRAM en la **AuraTerminal**.
+   * En la **AuraTerminal**: latencia total, tiempo del modelo, bytes copiados CPU↔GPU y VRAM pico.
 
 ---
 

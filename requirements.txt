@@ -1,30 +1,34 @@
+# Versiones fijadas: probadas en una instalación limpia (Python 3.10, RTX 3050 Laptop, driver 620)
+# con tests/test_cuda.py, tests/test_inference.py, la app Streamlit y el servidor WebSocket.
+
 # PyTorch con aceleración CUDA 12.8
 # (cu128 soporta desde Volta/Turing/Ampere hasta Blackwell sm_120, p. ej. RTX 3050 y RTX 50xx)
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.8.0
 torchaudio==2.8.0
 
-# Motor del modelo emotion2vec+ Large (carga e inferencia vía FunASR / Hugging Face Hub)
-funasr>=1.2.0
+# Motor del modelo emotion2vec+ Large (carga e inferencia vía FunASR)
+funasr==1.4.24
 
 # Hugging Face Hub para descargar los pesos de emotion2vec+
-transformers>=4.40.0
-huggingface-hub>=0.23.0
-safetensors>=0.4.0
+transformers==5.20.2
+huggingface-hub==2.4.0
+safetensors==0.8.0
 
 # Procesamiento e inspección de audio
-soundfile>=0.12.1
-librosa>=0.10.0
-numpy<2.0.0
+soundfile==0.14.0
+librosa==0.11.0
+scipy==1.15.3
+numpy==1.26.4
 
 # Streaming continuo en tiempo real (servidor WebSocket asíncrono)
-websockets>=13.0
+websockets==16.1.1
 
 # Telemetría real de CPU/RAM en la interfaz
-psutil>=5.9.0
+psutil==7.2.2
 
 # Interfaz gráfica interactiva y evaluación experimental
-streamlit>=1.35.0
-pandas>=2.0.0
-scikit-learn>=1.4.0
-matplotlib>=3.8.0
+streamlit==1.65.0
+pandas==2.3.3
+scikit-learn==1.7.2
+matplotlib==3.10.9

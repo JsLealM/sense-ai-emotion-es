@@ -32,10 +32,12 @@
   - [4. Aceleración y Funcionamiento de NVIDIA CUDA](#4-aceleración-y-funcionamiento-de-nvidia-cuda)
     - [Comparación CPU vs GPU (misma entrada, FP32)](#comparación-cpu-vs-gpu-misma-entrada-fp32)
   - [5. Arquitectura del Sistema](#5-arquitectura-del-sistema)
-  - [6. Instalacion y Puesta en Marcha](#6-instalacion-y-puesta-en-marcha)
+  - [6. Instalación y Puesta en Marcha](#6-instalación-y-puesta-en-marcha)
     - [Prerrequisitos](#prerrequisitos)
     - [Paso a Paso con `uv`](#paso-a-paso-con-uv)
+    - [Pruebas de Verificación](#pruebas-de-verificación)
     - [Streaming Continuo en Tiempo Real (WebSocket)](#streaming-continuo-en-tiempo-real-websocket)
+    - [Solución de Problemas](#solución-de-problemas)
   - [7. Contribuidores y Licencia](#7-contribuidores-y-licencia)
     - [Integrantes del Grupo](#integrantes-del-grupo)
     - [Licencias](#licencias)
@@ -180,8 +182,9 @@ sense-ai-emotion-es/
 |   |-- test_cuda.py            # Matmul en GPU con torch.cuda.synchronize y VRAM pico
 |   |-- test_inference.py       # Inferencia real: parametros, dtype, latencias y VRAM medidos
 |
-|-- samples/                    # Audios de prueba en espanol
-|   |-- sample_es.wav           # Muestra acustica de referencia
+|-- samples/                    # Audios de prueba (espanol, ingles y chino; ver samples/README.md)
+|   |-- sample_es.wav           # Muestra de referencia del benchmark
+|   |-- alegria-entusiasmo.m4a  # Caso donde el modelo falla (ver seccion 3)
 |
 `-- .streamlit/
     `-- config.toml             # Configuracion de logging y supresion de observadores
@@ -189,37 +192,81 @@ sense-ai-emotion-es/
 
 ---
 
-## 6. Instalacion y Puesta en Marcha
+## 6. Instalación y Puesta en Marcha
 
 ### Prerrequisitos
-* Sistema Operativo: Linux (nativo), WSL2 o Windows 10/11.
-* GPU NVIDIA con soporte CUDA (probado en RTX 3050 Laptop 4 GB y RTX 5050 Laptop 8 GB; Blackwell necesita CUDA 12.8+). Sin GPU funciona en CPU, más lento.
-* Controladores NVIDIA instalados (Driver 535+).
-* FFmpeg disponible en el PATH del sistema.
+
+| Requisito | Detalle |
+| :--- | :--- |
+| Sistema operativo | Linux, WSL2 o Windows 10/11 |
+| GPU (opcional) | NVIDIA con CUDA. Probado en RTX 3050 Laptop 4 GB y RTX 5050 Laptop 8 GB. Sin GPU la app funciona en CPU, más lento |
+| Driver NVIDIA | **570 o superior** (las ruedas de PyTorch cu128 usan CUDA 12.8). Verifícalo con `nvidia-smi` |
+| `uv` | Gestor de entornos de Python. Instala Python 3.10 por ti |
+| FFmpeg | Debe estar en el `PATH` (convierte m4a/mp3/ogg a WAV 16 kHz) |
+| Espacio en disco | ~6 GB para dependencias (PyTorch + CUDA) y ~1,2 GB para los pesos del modelo |
+| Navegador | Chrome, Edge o Firefox (para el micrófono en la pestaña de streaming) |
+
+Instalar `uv` y FFmpeg:
+
+```bash
+# uv (Linux / WSL2 / macOS)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# uv (Windows PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# FFmpeg
+sudo apt install ffmpeg          # Ubuntu / Debian / WSL2
+sudo pacman -S ffmpeg            # Arch / CachyOS
+winget install Gyan.FFmpeg       # Windows (reabrir la terminal después)
+```
 
 ### Paso a Paso con `uv`
+
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/TU_USUARIO/sense-ai-emotion-es.git
+git clone https://github.com/JsLealM/sense-ai-emotion-es.git
 cd sense-ai-emotion-es
 
-# 2. Crear entorno virtual con Python 3.10
+# 2. Crear el entorno virtual con Python 3.10
 uv venv --python 3.10 .venv
 
-# 3. Activar el entorno
-source .venv/bin/activate       # Linux / WSL2 / macOS
+# 3. Activar el entorno (según tu terminal)
+source .venv/bin/activate            # bash / zsh (Linux, WSL2, macOS)
+source .venv/bin/activate.fish       # fish
+.venv\Scripts\activate               # Windows PowerShell / CMD
 
-# 4. Instalar dependencias con soporte CUDA 12.8
+# 4. Instalar las dependencias (PyTorch 2.8 con CUDA 12.8; descarga ~3 GB la primera vez)
 uv pip install -r requirements.txt
 
-# 5. Precargar y verificar los pesos del modelo (Solo la primera vez en un equipo nuevo / WSL)
+# 5. Verificar que PyTorch ve la GPU (debe imprimir True y el nombre de tu GPU)
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+
+# 6. Descargar los pesos del modelo (~1,2 GB, solo la primera vez) y hacer una inferencia de prueba
 python scripts/download_model.py
 
-# 6. Ejecutar la aplicacion web
+# 7. Ejecutar la aplicación
 streamlit run app.py
 ```
 
-La interfaz queda accesible en `http://localhost:8501`.
+Abre **`http://localhost:8501`** en el navegador. Usa `localhost` y no la IP: el navegador solo permite el micrófono en `localhost` o `https`.
+
+Sin `uv`, con `pip` estándar (los pasos 5 a 7 son iguales):
+
+```bash
+python3.10 -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Pruebas de Verificación
+
+```bash
+python tests/test_cuda.py                                    # GPU, CUDA, VRAM y matmul con torch.cuda.synchronize()
+python tests/test_inference.py samples/sample_es.wav         # inferencia en GPU: parámetros, dtype, latencias, VRAM
+python tests/test_inference.py samples/sample_es.wav --device cpu   # la misma inferencia en CPU
+```
+
+Salida esperada de `test_inference.py`: `Parámetros usados en inferencia: 162,140,185 (162.1M params)`, `dtype / dispositivo: float32 / cuda:0` y la emoción predominante con sus 9 probabilidades.
 
 ### Streaming Continuo en Tiempo Real (WebSocket)
 
@@ -247,6 +294,21 @@ Flujo del pipeline:
 Tolerancia a fallos: si el servidor esta apagado, la pestana muestra instrucciones en lugar de un error; si se niega el microfono o se pierde la conexion, el panel lo indica y la app sigue funcionando. Las ventanas en silencio (RMS < 0.004) no se envian al modelo.
 
 > El navegador solo permite usar el microfono en `https://` o en `http://localhost`. Abre la app como `http://localhost:8501`.
+
+### Solución de Problemas
+
+| Síntoma | Causa y solución |
+| :--- | :--- |
+| `torch.cuda.is_available()` devuelve `False` | Driver NVIDIA ausente o anterior a 570. Actualízalo y verifica con `nvidia-smi`. En WSL2 instala el driver en Windows, no dentro de Linux |
+| `no kernel image is available for execution on the device` | La GPU (p. ej. Blackwell, RTX 50xx) necesita PyTorch con CUDA 12.8. Reinstala con `uv pip install -r requirements.txt` |
+| `FileNotFoundError: ffmpeg` o el audio m4a/mp3 no carga | FFmpeg no está en el `PATH`. Instálalo (ver Prerrequisitos) y abre una terminal nueva |
+| `Failed to download ... operation timed out` durante la instalación | Descarga lenta desde los servidores de PyTorch/NVIDIA. Repite con más tiempo de espera: `UV_HTTP_TIMEOUT=600 uv pip install -r requirements.txt` (en PowerShell: `$env:UV_HTTP_TIMEOUT=600` antes del comando). Lo ya descargado queda en caché |
+| `ModuleNotFoundError` (p. ej. `psutil`) | El entorno no está activado o faltan dependencias: activa `.venv` y repite `uv pip install -r requirements.txt` |
+| La pestaña Streaming dice que el servidor está apagado | Falta la Terminal 1: `python src/websocket_server.py` |
+| `address already in use` al iniciar el servidor | Ya hay un servidor en el puerto 8765. Ciérralo (`Ctrl+C`) o usa `python src/websocket_server.py --port 8766` |
+| El micrófono no funciona | Abre `http://localhost:8501` (no la IP) y permite el micrófono en el candado de la barra de direcciones |
+| La primera inferencia tarda varios segundos | Carga del modelo y de CUDA. Las siguientes son mucho más rápidas (`@st.cache_resource`) |
+| `CUDA out of memory` | Otra aplicación usa la VRAM. Ciérrala o ejecuta en CPU con `python src/websocket_server.py --device cpu` |
 
 ---
 

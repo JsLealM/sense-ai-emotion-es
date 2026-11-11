@@ -242,6 +242,7 @@ Flujo del pipeline:
 2. **Servidor (`src/websocket_server.py`):** acumula el audio en un bufer circular acotado a 5 s. Cada 1.0 s de audio nuevo toma la ventana de los ultimos 3.0 s.
 3. **Concurrencia:** la inferencia corre en un hilo aparte (`asyncio.to_thread`), asi el bucle de eventos sigue recibiendo audio mientras la GPU trabaja. Un `asyncio.Lock` serializa el acceso al unico modelo en GPU, y si la GPU esta ocupada se descartan las ventanas atrasadas para analizar siempre la mas reciente.
 4. **Respuesta:** JSON con la emocion predominante, las 9 probabilidades, valencia/activacion (Russell 2D), latencia y VRAM. El panel se actualiza sin recargar Streamlit.
+5. **Telemetria de GPU:** un hilo del servidor lee `nvidia-smi -lms 100` (uso, temperatura, potencia, memoria). La terminal del panel tiene dos vistas: **Ventanas** (veredicto por ventana) y **GPU** (ocupacion = tiempo de forward medido con `torch.cuda.synchronize()` / 1 s de audio, mas el pico de `nvidia-smi`, VRAM, temperatura y potencia). En GPUs de portatil `nvidia-smi` muestrea con poca resolucion y puede no ver rafagas de ~100 ms; por eso la ocupacion medida es la metrica principal.
 
 Tolerancia a fallos: si el servidor esta apagado, la pestana muestra instrucciones en lugar de un error; si se niega el microfono o se pierde la conexion, el panel lo indica y la app sigue funcionando. Las ventanas en silencio (RMS < 0.004) no se envian al modelo.
 

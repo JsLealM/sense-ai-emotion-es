@@ -13,6 +13,9 @@ Modelo de concurrencia:
     compartido entre todos los clientes conectados.
   - Si llega audio mientras una inferencia está en curso, no se encolan inferencias
     atrasadas: se procesa siempre la ventana más reciente (backpressure por descarte).
+  - Un hilo aparte mantiene abierto `nvidia-smi -lms 100` y guarda una muestra de uso,
+    temperatura, potencia y memoria de la GPU cada 100 ms. Para cada ventana se reporta
+    el uso pico y medio de la GPU durante su inferencia.
 
 Uso:
     python src/websocket_server.py              # ws://0.0.0.0:8765 en cuda:0
@@ -20,13 +23,18 @@ Uso:
 """
 
 import argparse
+import atexit
 import asyncio
 import json
 import logging
 import os
+import signal
 import sys
+import subprocess
 import tempfile
+import threading
 import time
+from collections import deque
 
 import numpy as np
 import soundfile as sf
@@ -61,6 +69,88 @@ STRIDE_SAMPLES = int(STRIDE_SEC * SAMPLE_RATE)
 MAX_BUFFER_SAMPLES = int(MAX_BUFFER_SEC * SAMPLE_RATE)
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
+class GpuSampler:
+    """
+    Lee nvidia-smi en modo continuo (una muestra cada SAMPLE_MS) en un hilo daemon.
+    utilization.gpu es el % de tiempo en que al menos un kernel CUDA se ejecutó durante
+    el último periodo de muestreo del driver; no es el % de núcleos ocupados. En GPUs de
+    portátil el driver muestrea con poca resolución (en la RTX 3050 Laptop reporta 0 % o
+    100 %), así que puede no ver ráfagas de ~100 ms. Por eso el servidor envía además
+    'duty_pct': tiempo de forward medido con torch.cuda.synchronize() / 1 s de audio.
+    """
+    SAMPLE_MS = 100
+    QUERY = "utilization.gpu,temperature.gpu,power.draw,memory.used,memory.total"
+
+    def __init__(self):
+        self.samples = deque(maxlen=600)   # ~60 s de historia
+        self.lock = threading.Lock()
+        self.available = False
+        try:
+            self.proc = subprocess.Popen(
+                ["nvidia-smi", f"--query-gpu={self.QUERY}", "--format=csv,noheader,nounits",
+                 "-lms", str(self.SAMPLE_MS), "-i", "0"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+            )
+            self.available = True
+            threading.Thread(target=self._reader, daemon=True).start()
+        except (FileNotFoundError, OSError):
+            self.proc = None
+
+    @staticmethod
+    def _num(txt):
+        try:
+            return float(txt.strip())
+        except ValueError:
+            return None  # p. ej. "[N/A]" en potencia de algunas laptops
+
+    def _reader(self):
+        for line in self.proc.stdout:
+            parts = line.split(",")
+            if len(parts) < 5:
+                continue
+            util, temp, power, mem, mem_tot = (self._num(p) for p in parts[:5])
+            with self.lock:
+                self.samples.append((time.monotonic(), util, temp, power, mem, mem_tot))
+        self.available = False
+
+    def latest(self):
+        with self.lock:
+            s = self.samples[-1] if self.samples else None
+        if not s:
+            return None
+        return {"util": s[1], "temp_c": s[2], "power_w": s[3], "mem_used_mib": s[4], "mem_total_mib": s[5]}
+
+    def stats_between(self, t0: float, t1: float):
+        """Uso pico y medio entre t0 y t1. Se extiende 300 ms porque el driver promedia hacia atrás."""
+        with self.lock:
+            win = [s for s in self.samples if t0 <= s[0] <= t1 + 0.3 and s[1] is not None]
+        if not win:
+            return None
+        utils = [s[1] for s in win]
+        return {"util_peak": max(utils), "util_mean": round(sum(utils) / len(utils), 1), "n_samples": len(win)}
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
+GPU_SAMPLER = None
+
+
+def gpu_snapshot(t0=None, t1=None) -> dict:
+    """Datos de nvidia-smi para enviar al navegador (None si no hay GPU NVIDIA)."""
+    if GPU_SAMPLER is None or not GPU_SAMPLER.available:
+        return None
+    snap = GPU_SAMPLER.latest() or {}
+    if t0 is not None:
+        snap.update(GPU_SAMPLER.stats_between(t0, t1) or {})
+    return snap
 MODEL = None
 MODEL_LOCK = asyncio.Lock()
 
@@ -99,7 +189,7 @@ def gpu_memory_mb() -> float:
     return 0.0
 
 
-def build_payload(result: dict, window_index: int, rms: float, queue_ms: float) -> dict:
+def build_payload(result: dict, window_index: int, rms: float, queue_ms: float, gpu: dict = None) -> dict:
     parsed = result["parsed_result"]
     metrics = result["metrics"]
     circ = parsed.get("circumplex", {})
@@ -124,6 +214,9 @@ def build_payload(result: dict, window_index: int, rms: float, queue_ms: float) 
         "vram_peak_mb": metrics["vram_stats"].get("peak_mb"),
         "model_forward_ms": metrics["model_forward_ms"],
         "precision": metrics["precision"],
+        # Fracción de cada segundo de audio que la GPU pasa ejecutando el modelo
+        "duty_pct": round(metrics["model_forward_ms"] / (STRIDE_SEC * 1000) * 100, 1),
+        "gpu": gpu,
         "timestamp": time.strftime("%H:%M:%S"),
     }
 
@@ -179,7 +272,7 @@ async def handler(websocket):
             if not np.isfinite(rms) or rms < SILENCE_RMS:
                 await websocket.send(json.dumps({
                     "status": "SILENCE", "window": window_index, "rms": round(rms, 5),
-                    "timestamp": time.strftime("%H:%M:%S"),
+                    "timestamp": time.strftime("%H:%M:%S"), "gpu": gpu_snapshot(),
                 }))
                 continue
 
@@ -187,16 +280,22 @@ async def handler(websocket):
             async with MODEL_LOCK:
                 queue_ms = (time.perf_counter() - t_queue) * 1000
                 try:
+                    t_inf0 = time.monotonic()
                     result = await asyncio.to_thread(infer_window, model, window)
+                    t_inf1 = time.monotonic()
                 except Exception as exc:  # Nunca tumbar la conexión por un fallo de inferencia
                     log.error(f"Fallo de inferencia (ventana {window_index}): {exc}")
                     await websocket.send(json.dumps({"status": "ERROR", "message": str(exc)}))
                     continue
 
             if result.get("status") == "EXITOSA":
-                payload = build_payload(result, window_index, rms, queue_ms)
+                if GPU_SAMPLER is not None and GPU_SAMPLER.available:
+                    await asyncio.sleep(0.3)  # deja llegar las muestras de nvidia-smi de esta inferencia
+                payload = build_payload(result, window_index, rms, queue_ms, gpu_snapshot(t_inf0, t_inf1))
+                g = payload.get("gpu") or {}
                 log.info(f"[{client[0]}] ventana {window_index}: {payload['predominant']} "
-                         f"{payload['confidence']}% | {payload['latency_ms']} ms | {DEVICE}")
+                         f"{payload['confidence']}% | {payload['latency_ms']} ms | {DEVICE} | "
+                         f"GPU pico {g.get('util_peak', 'N/D')}% media {g.get('util_mean', 'N/D')}%")
                 await websocket.send(json.dumps(payload))
             else:
                 await websocket.send(json.dumps({
@@ -212,8 +311,14 @@ async def handler(websocket):
 
 async def main(host: str, port: int):
     log.info(f"=== SERVIDOR WEBSOCKET AURAVOICE en ws://{host}:{port} | dispositivo {DEVICE} ===")
+    global GPU_SAMPLER
     get_server_model()  # Precarga antes de aceptar conexiones
     async with websockets.serve(handler, host, port, max_size=2 * 1024 * 1024):
+        if "cuda" in DEVICE:  # Solo tras abrir el puerto, para no dejar nvidia-smi huérfano si falla
+            GPU_SAMPLER = GpuSampler()
+            atexit.register(GPU_SAMPLER.stop)
+            log.info(f"Muestreo de GPU con nvidia-smi cada {GpuSampler.SAMPLE_MS} ms: "
+                     f"{'activo' if GPU_SAMPLER.available else 'no disponible'}")
         log.info("Servidor listo. Esperando clientes... (Ctrl+C para detener)")
         await asyncio.Future()
 
@@ -226,7 +331,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.device:
         DEVICE = args.device if ("cuda" not in args.device or torch.cuda.is_available()) else "cpu"
+
+    def _on_sigterm(signum, frame):
+        raise KeyboardInterrupt  # mismo cierre ordenado que Ctrl+C (detiene nvidia-smi)
+    signal.signal(signal.SIGTERM, _on_sigterm)
     try:
         asyncio.run(main(args.host, args.port))
     except KeyboardInterrupt:
         log.info("Servidor detenido por el usuario.")
+    finally:
+        if GPU_SAMPLER is not None:
+            GPU_SAMPLER.stop()

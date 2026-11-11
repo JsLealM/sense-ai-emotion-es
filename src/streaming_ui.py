@@ -69,7 +69,7 @@ def render_streaming_tab(render_html):
         st.button("Comprobar de nuevo", key="ws_recheck", use_container_width=True)
 
     try:
-        st.components.v1.html(_client_html(WS_PORT), height=740, scrolling=False)
+        st.components.v1.html(_client_html(WS_PORT), height=780, scrolling=False)
     except Exception as exc:  # El panel nunca debe tumbar la app
         st.info(f"No se pudo cargar el panel de streaming en este navegador: {exc}")
 
@@ -169,7 +169,7 @@ html, body { margin: 0; padding: 2px; background: transparent;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.67rem;
     color: #E7DDD4;
-    height: 125px;
+    height: 165px;
     overflow-y: auto;
     line-height: 1.45;
     margin-top: 6px;
@@ -181,6 +181,25 @@ html, body { margin: 0; padding: 2px; background: transparent;
 .ws-term-line .t-emo { font-weight: 700; }
 .ws-term-line .t-lat { color: #10B981; }
 .ws-term-line .t-dev { color: #38BDF8; }
+.ws-term-line .t-gpu { color: #A3E635; font-weight: 600; }
+.ws-term-line .t-mut { color: #A8A29E; }
+/* Pestañas de la terminal: Ventanas | GPU */
+.term-tabs { display: flex; gap: 4px; }
+.term-tab { font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; font-weight: 700; letter-spacing: .04em;
+    padding: 3px 9px; border-radius: 6px; border: 1px solid #382E2B; background: #1C1613; color: #A8A29E; cursor: pointer; }
+.term-tab.active { background: #EA580C; border-color: #EA580C; color: #fff; }
+.term-tab:focus-visible { outline: 2px solid #38BDF8; outline-offset: 1px; }
+#ws-gpu { display: flex; flex-direction: column; overflow: hidden; }
+#ws-gpu[hidden] { display: none; }
+#g-log { flex: 1; min-height: 0; overflow-y: auto; }
+.gpu-strip { flex: none; display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: end; margin-bottom: 6px;
+    padding-bottom: 6px; border-bottom: 1px solid #2A221F; }
+.gpu-now { font-size: 1.15rem; font-weight: 800; color: #A3E635; line-height: 1; }
+.gpu-now small { display: block; font-size: 0.58rem; font-weight: 600; color: #8F7D74; margin-top: 3px; }
+.gpu-bars { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+.gpu-bars > div { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: #3F6212; }
+.gpu-bars > div.hot { background: #A3E635; }
+.gpu-meta { font-size: 0.6rem; color: #8F7D74; grid-column: 1 / -1; }
 </style></head>
 <body>
 <div class="grid">
@@ -212,10 +231,24 @@ html, body { margin: 0; padding: 2px; background: transparent;
 
     <div class="section-label" style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
       <span>AuraTerminal Live (WebSocket Stream)</span>
-      <span id="term-status" style="font-size:0.67rem; color:#8F7D74; font-weight:700;">EN ESPERA</span>
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="term-tabs" role="tablist">
+          <button class="term-tab active" id="tab-win" role="tab" aria-selected="true">VENTANAS</button>
+          <button class="term-tab" id="tab-gpu" role="tab" aria-selected="false">GPU</button>
+        </span>
+        <span id="term-status" style="font-size:0.67rem; color:#8F7D74; font-weight:700;">EN ESPERA</span>
+      </span>
     </div>
     <div class="ws-terminal" id="ws-term">
       <div class="ws-term-line dim">[SISTEMA] Pulsa Iniciar Streaming para observar el crono-análisis en tiempo real...</div>
+    </div>
+    <div class="ws-terminal" id="ws-gpu" hidden>
+      <div class="gpu-strip">
+        <div class="gpu-now"><span id="g-now">—</span><small>GPU ocupada por el modelo</small></div>
+        <div class="gpu-bars" id="g-bars" title="Ocupación de la GPU por ventana: forward / 1 s de audio"></div>
+        <div class="gpu-meta" id="g-meta">Barras: % de cada segundo que la GPU ejecuta el modelo (forward medido con torch.cuda.synchronize)</div>
+      </div>
+      <div id="g-log"><div class="ws-term-line dim">[GPU] Esperando la primera ventana...</div></div>
     </div>
   </div>
 
@@ -423,6 +456,69 @@ html, body { margin: 0; padding: 2px; background: transparent;
     $("d-vram").textContent = d.device === "cpu" ? "n/a" : d.vram_mb.toFixed(0) + " MiB";
     pushHistory(d.color, `${d.timestamp} ${d.predominant} ${d.confidence}%`);
     appendTermLine(d);
+    renderGpu(d);
+  }
+
+  // ---------- Pestañas de la terminal ----------
+  function showTab(which) {
+    const gpu = which === "gpu";
+    $("ws-term").hidden = gpu; $("ws-gpu").hidden = !gpu;
+    $("tab-win").classList.toggle("active", !gpu); $("tab-gpu").classList.toggle("active", gpu);
+    $("tab-win").setAttribute("aria-selected", String(!gpu)); $("tab-gpu").setAttribute("aria-selected", String(gpu));
+    if (gpu) $("g-log").scrollTop = $("g-log").scrollHeight;
+  }
+  $("tab-win").onclick = () => showTab("win");
+  $("tab-gpu").onclick = () => showTab("gpu");
+
+  // ---------- Telemetría GPU ----------
+  const gpuPeaks = [];
+  const fmt = (v, suf = "", dec = 0) => (v === null || v === undefined) ? "N/D" : Number(v).toFixed(dec) + suf;
+
+  function updateGpuNow(d) {
+    const g = d.gpu;
+    $("g-now").textContent = d.status === "SILENCE" ? "0%" : fmt(d.duty_pct, "%", 1);
+    if (!g) { $("g-meta").textContent = "Barras: % de cada segundo con el modelo ejecutándose · nvidia-smi no disponible"; return; }
+    $("g-meta").textContent = `Barras: % de cada segundo con el modelo ejecutándose · nvidia-smi: ${fmt(g.temp_c, " °C")} · ` +
+      `${fmt(g.power_w, " W", 1)} · memoria ${fmt(g.mem_used_mib, "")}/${fmt(g.mem_total_mib, " MiB")}`;
+  }
+
+  function pushGpuBar(peak) {
+    gpuPeaks.push(peak ?? 0); if (gpuPeaks.length > 40) gpuPeaks.shift();
+    const box = $("g-bars"); box.innerHTML = "";
+    gpuPeaks.forEach((v) => {
+      const b = document.createElement("div");
+      b.style.height = Math.max(2, v) + "%"; if (v >= 50) b.className = "hot";
+      b.title = v + "%"; box.appendChild(b);
+    });
+  }
+
+  function appendGpuLine(html) {
+    const log = $("g-log");
+    if (log.firstChild && log.firstChild.classList.contains("dim") && log.children.length === 1) log.innerHTML = "";
+    const line = document.createElement("div");
+    line.className = "ws-term-line"; line.innerHTML = html;
+    log.appendChild(line);
+    while (log.children.length > 50) log.removeChild(log.firstChild);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function renderGpu(d) {
+    const g = d.gpu;
+    updateGpuNow(d);
+    const ts = d.timestamp || new Date().toTimeString().split(" ")[0];
+    if (d.status === "SILENCE") {
+      pushGpuBar(0);
+      appendGpuLine(`<span class="t-mut">[${ts}] win #${d.window} silencio · la GPU no se usa</span>`);
+      return;
+    }
+    pushGpuBar(d.duty_pct);
+    appendGpuLine(
+      `<span class="t-mut">[${ts}]</span> <span class="t-win">win #${d.window}</span> ` +
+      `<span class="t-gpu">ocupación ${fmt(d.duty_pct, "%", 1)}</span> ` +
+      `(forward <span class="t-lat">${fmt(d.model_forward_ms, " ms")}</span>) | ` +
+      `nvidia-smi pico ${fmt(g && g.util_peak, "%")} | ` +
+      `VRAM ${fmt(d.vram_mb, "")}/${fmt(d.vram_peak_mb, " MiB")} pico | ${fmt(g && g.temp_c, " °C")} · ${fmt(g && g.power_w, " W", 1)}`
+    );
   }
 
   function appendTermLine(d) {
@@ -487,6 +583,7 @@ html, body { margin: 0; padding: 2px; background: transparent;
           $("ts").textContent = `Silencio detectado · ventana #${d.window}`;
           pushHistory("#E7DDD4", `${d.timestamp} silencio`);
           appendTermText(`[${d.timestamp}] [VAD] Silencio detectado en ventana #${d.window} (RMS < 0.004)`, "#8F7D74");
+          renderGpu(d);
         } else if (d.status === "ERROR") {
           setMsg("Error de inferencia en el servidor: " + d.message);
           appendTermText(`[ERROR] Inferencia fallida: ${d.message}`, "#EF4444");

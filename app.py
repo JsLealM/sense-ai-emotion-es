@@ -1525,7 +1525,7 @@ with tab_live:
 # ==============================================================================
 with tab_bench:
     render_html(f"""
-    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px;">
+    <div class="section-card" style="margin-bottom: 20px; padding: 20px 24px; min-height: 0; height: auto;">
         <div class="card-title-row">
             <div class="card-title">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EA580C" stroke-width="2.5"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
@@ -1536,10 +1536,7 @@ with tab_bench:
             </div>
         </div>
         <p style="font-size: 0.88rem; color: #574A43; margin-top: 8px; margin-bottom: 0;">
-            Ejecuta emotion2vec+ Large con el mismo audio en la GPU y en la CPU, con los mismos pesos y la misma precisión.
-            Antes de medir hace una corrida de calentamiento en cada dispositivo (inicialización de CUDA/cuDNN y caché).
-            Separa el tiempo del modelo (forward, medido entre torch.cuda.synchronize()) del trabajo en CPU fuera del modelo,
-            para ver la aceleración del cálculo paralelo y la del proceso completo (ley de Amdahl).
+            Ejecuta emotion2vec+ Large con el mismo audio en la GPU y en la CPU, con los mismos pesos y la misma precisión. Antes de medir hace una corrida de calentamiento en cada dispositivo (inicialización de CUDA/cuDNN). Separa el tiempo del modelo (forward, medido entre torch.cuda.synchronize()) del trabajo en CPU fuera del modelo, para comparar la aceleración del cálculo paralelo con la del proceso completo (ley de Amdahl).
         </p>
     </div>
     """)

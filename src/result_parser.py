@@ -119,6 +119,12 @@ def compute_circumplex_state(scores: Dict[str, float]) -> Dict[str, Any]:
         title = "Disgusto / Rechazo Acústico"
         tag = "● Disgustado"
         tag_color = "#D97706"
+    elif max_prob < 0.4:
+        # Ninguna clase supera el 40 %: se muestra la clase ganadora del modelo marcada como incierta,
+        # en lugar de inventar una etiqueta a partir del cuadrante de Russell.
+        title = f"{max_emo} · Predicción incierta"
+        tag = "● Incierto"
+        tag_color = EMOTION_COLORS.get(max_emo, "#64748B")
     elif valence >= 0.3:
         if arousal >= 0.5:
             title = "Alegría / Entusiasmo"

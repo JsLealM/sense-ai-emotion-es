@@ -1,4 +1,4 @@
-# FICHA TÉCNICA DEL MODELO: emotion2vec+ Large (Interspeech 2024 SOTA)
+# FICHA TÉCNICA DEL MODELO: emotion2vec+ Large
 
 Documento técnico elaborado para la asignatura de **Computación Paralela / Arquitecturas Paralelas** (Universidad).
 
@@ -9,12 +9,12 @@ Documento técnico elaborado para la asignatura de **Computación Paralela / Arq
 | Parámetro | Detalle |
 | :--- | :--- |
 | **Nombre Oficial** | **emotion2vec+ Large** (`emotion2vec/emotion2vec_plus_large`) |
-| **Entidad Desarrolladora** | **Alibaba Group / FunASR Team** (Interspeech 2024) |
+| **Entidad Desarrolladora** | Organización **emotion2vec** (Ziyang Ma et al., SJTU + Alibaba / FunASR) |
 | **Repositorio Hugging Face** | [https://huggingface.co/emotion2vec/emotion2vec_plus_large](https://huggingface.co/emotion2vec/emotion2vec_plus_large) |
-| **Publicación Científica** | *emotion2vec+: Self-Supervised Pre-Training for Speech Emotion Representation* (Interspeech 2024) |
+| **Publicación Científica** | *emotion2vec: Self-Supervised Pre-Training for Speech Emotion Representation* (arXiv:2312.15185) |
 | **Tarea Principal** | Reconocimiento de Emociones en el Habla (**Speech Emotion Recognition - SER**) Acústico Puro |
 | **Dominio Acústico** | **Universal / Multilingüe** (Inferencia acústica de representaciones latentes invariantes al idioma) |
-| **Licencia** | **Apache 2.0 / Open Source** (Uso académico y comercial con atribución) |
+| **Licencia** | `model-license` de FunASR (ver `MODEL_LICENSE.txt`): uso citando la fuente y conservando el nombre del modelo |
 
 ---
 
@@ -30,13 +30,12 @@ El reconocimiento de emociones en la voz (SER) enfrenta el reto de modelar las v
 
 ## 3. Arquitectura y Parámetros
 
-* **Arquitectura Base**: **Data2Vec 2.0 Large** (Transformer contextual para audio con atención multi-cabeza y ALiBi positional encoding).
-* **Número de Parámetros**: **~315.0 Millones de parámetros** (315.0M params).
-* **Capas Transformer**: 24 capas de codificador contextual con normalizaciones de capa optimizadas.
-* **Dimensión de Embedding**: 1024 canales latentes.
+* **Arquitectura Base**: **Data2Vec 2.0** — CNN de 7 capas sobre la forma de onda + 12 bloques Transformer (4 prenet + 8), 16 cabezas, posiciones ALiBi.
+* **Número de Parámetros**: **~300M** según la model card; **162.140.185** contados en el checkpoint de inferencia (`sum(p.numel())`, sin el decoder de preentrenamiento).
+* **Dimensión de Embedding**: 1024 canales latentes, 50 frames por segundo.
 * **Preprocesamiento Acústico**: Señal de audio remuestreada a **16.000 Hz (16 kHz), canal mono**.
-* **Precisión y Aceleración**: Tensores en **FP16** acelerados mediante núcleos tensoriales NVIDIA CUDA.
-* **Capa de Clasificación**: Proyección lineal final con activación Softmax normalizada sobre 9 clases.
+* **Precisión en la app**: **FP32** (`torch.float32`), ~626 MiB de pesos en VRAM.
+* **Capa de Clasificación**: Proyección lineal 1024→9 con Softmax.
 
 ---
 
@@ -64,16 +63,10 @@ El modelo produce puntuaciones probabilísticas (logits) para **9 categorías ca
 
 ## 5. Aceleración con NVIDIA CUDA en GPU de 4 GB (RTX 3050 Laptop)
 
-### Desafío Computacional de la Atención Cuadrática:
-En modelos Transformer basados en audio, la matriz de atención crece con complejidad cuadrática $O(T^2)$ respecto al número de tramas temporales $T$. En audios largos (> 30 segundos), la inferencia monolítica requiere asignar matrices de atención gigantescas, superando el límite de 4 GB de VRAM de la GPU RTX 3050 (`CUDA Out of Memory`).
+### Desafío: atención cuadrática
+La matriz de atención crece con O(T²) respecto al número de frames T (50 por segundo). Con 60 s de audio, T = 3.000 y los puntajes de una sola capa ocupan ~576 MB en FP32 (16 cabezas × 3.000² × 4 bytes), lo que en 4 GB termina en `CUDA out of memory`.
 
-### Solución Arquitectural Implementada:
-1. **Segmentación Deslizante Acotada ($O(1)$ VRAM)**:
-   - Para audios superiores a 8 segundos, el motor divide la señal en ventanas temporales uniformes (de 3.0s a 5.0s con solapamiento controlado).
-   - Procesa cada fragmento individualmente liberando memoria intermedia.
-   - Agrega las distribuciones de probabilidad mediante promedio temporal ponderado.
-   - El consumo pico de VRAM se mantiene estricto en **~770 MiB**, garantizando estabilidad continua sin importar si el audio dura 10 segundos o 1 hora.
-2. **Inferencia en Media Precisión (`torch.float16`)**:
-   - Ejecución directa sobre los núcleos CUDA de la GPU Laptop RTX 3050.
-3. **Carga 100% Offline**:
-   - Carga directa desde la instantánea local en disco (`~/.cache/huggingface/hub/models--emotion2vec--emotion2vec_plus_large`), sin comprobaciones de red ni latencias de red.
+### Solución implementada
+1. **Ventanas de duración fija** (3 s, paso 2 s, configurables): la memoria por ventana no depende de la duración total del audio. Las probabilidades de las ventanas se promedian. Pico medido: ~720–830 MiB.
+2. **FP32 sin cuantizar**: el modelo cabe holgado; FP16 queda como trabajo futuro.
+3. **Carga offline** desde `~/.cache/huggingface/hub/models--emotion2vec--emotion2vec_plus_large` cuando los pesos ya están descargados.
